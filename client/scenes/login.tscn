@@ -1,0 +1,193 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/login.gd" id="1_login"]
+
+[sub_resource type="Gradient" id="Grad_1"]
+colors = PackedColorArray(0.16, 0.36, 0.62, 1, 0.05, 0.1, 0.22, 1)
+
+[sub_resource type="GradientTexture2D" id="GradTex_1"]
+gradient = SubResource("Grad_1")
+fill_to = Vector2(0, 1)
+
+[sub_resource type="StyleBoxFlat" id="Panel_1"]
+content_margin_left = 32.0
+content_margin_top = 28.0
+content_margin_right = 32.0
+content_margin_bottom = 24.0
+bg_color = Color(0.07, 0.1, 0.18, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 0.12)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 18
+
+[sub_resource type="StyleBoxFlat" id="Field_1"]
+content_margin_left = 12.0
+content_margin_top = 9.0
+content_margin_right = 12.0
+content_margin_bottom = 9.0
+bg_color = Color(1, 1, 1, 0.07)
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 0.15)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="Submit_1"]
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+bg_color = Color(0.89, 0.24, 0.24, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="ButtonGroup" id="Tabs_1"]
+
+[node name="Login" type="Node"]
+script = ExtResource("1_login")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Root" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Backdrop" type="TextureRect" parent="UI/Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("GradTex_1")
+expand_mode = 1
+
+[node name="Center" type="CenterContainer" parent="UI/Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="UI/Root/Center"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("Panel_1")
+
+[node name="VBox" type="VBoxContainer" parent="UI/Root/Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="UI/Root/Center/Panel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Pokémon Mega MMO"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="UI/Root/Center/Panel/VBox"]
+modulate = Color(1, 1, 1, 0.6)
+layout_mode = 2
+text = "Kalos Online"
+horizontal_alignment = 1
+
+[node name="Tabs" type="HBoxContainer" parent="UI/Root/Center/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LoginTab" type="Button" parent="UI/Root/Center/Panel/VBox/Tabs"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+button_group = SubResource("Tabs_1")
+theme_override_colors/font_color = Color(1, 1, 1, 0.4)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 0.75)
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_pressed_color = Color(1, 1, 1, 1)
+text = "Log in"
+flat = true
+
+[node name="RegisterTab" type="Button" parent="UI/Root/Center/Panel/VBox/Tabs"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+button_group = SubResource("Tabs_1")
+theme_override_colors/font_color = Color(1, 1, 1, 0.4)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 0.75)
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_pressed_color = Color(1, 1, 1, 1)
+text = "Register"
+flat = true
+
+[node name="Username" type="LineEdit" parent="UI/Root/Center/Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/normal = SubResource("Field_1")
+placeholder_text = "Username"
+max_length = 16
+
+[node name="Password" type="LineEdit" parent="UI/Root/Center/Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/normal = SubResource("Field_1")
+placeholder_text = "Password"
+max_length = 128
+secret = true
+
+[node name="ConfirmPassword" type="LineEdit" parent="UI/Root/Center/Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/normal = SubResource("Field_1")
+placeholder_text = "Confirm password"
+max_length = 128
+secret = true
+
+[node name="TrainerName" type="LineEdit" parent="UI/Root/Center/Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/normal = SubResource("Field_1")
+placeholder_text = "Trainer name (shown to other players)"
+max_length = 12
+
+[node name="Remember" type="CheckBox" parent="UI/Root/Center/Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Stay logged in"
+
+[node name="Submit" type="Button" parent="UI/Root/Center/Panel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+theme_override_styles/normal = SubResource("Submit_1")
+theme_override_styles/hover = SubResource("Submit_1")
+theme_override_styles/pressed = SubResource("Submit_1")
+text = "Log in"
+
+[node name="Status" type="Label" parent="UI/Root/Center/Panel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(316, 0)
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Server" type="Label" parent="UI/Root/Center/Panel/VBox"]
+unique_name_in_owner = true
+modulate = Color(1, 1, 1, 0.4)
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Server: localhost:2567"
+horizontal_alignment = 1

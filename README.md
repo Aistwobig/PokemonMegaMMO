@@ -20,3 +20,11 @@ docker compose up -d
 ```
 
 Starts PostgreSQL on port 5432 and Redis on port 6379.
+
+```
+cd server
+npm install
+npm run dev
+```
+
+Starts the game server on ws://localhost:2567. See [server/README.md](server/README.md).

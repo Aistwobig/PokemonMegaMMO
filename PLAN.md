@@ -73,6 +73,31 @@ window shows more at the sides, which can expose map edges, missing geometry, or
 Per map, in order of preference: leave as-is if it looks fine → fog/vignette the edges →
 pillarbox to 5:3 → add filler geometry.
 
+### Accounts
+
+Our own register/login, no third-party accounts. The server hashes passwords (scrypt) and issues
+a session token; joining any room requires one. A trainer can be online once — a second login
+kicks the first. Built: see `server/README.md`.
+
+### Character customization
+
+X/Y already has a trainer customizer (skin, hair, eyes, outfits, hats). Reuse it: the player and
+clothing models come from the player's RomFS (`a/0/8/9` player models, `a/0/8/8` clothing).
+The server stores only the choices (`{ skin: 2, hair: 5, top: 17, … }`) and syncs them to other
+players; each client builds the look from its own assets. Character creation happens right after
+register. Clothing can later be bought in boutiques or earned.
+
+### Marketplace (GTL)
+
+A global market like PokeMMO's GTL, entirely server-side in Postgres:
+
+- **Escrow:** listing a Pokémon or item removes it from the seller right away and holds it in the
+  listing, so it can't be traded or sold twice.
+- **Buying is one transaction:** lock the listing, check the buyer's money, move the Pokémon/item,
+  pay the seller minus a fee. Any failure rolls back everything.
+- Search by species, level, nature, price; listings expire and return to the seller.
+- Fees and listing limits keep the economy in check. Log every sale for spotting abuse.
+
 ### Data flow
 
 - Live state (positions, battles in progress) → game server memory
@@ -82,7 +107,8 @@ pillarbox to 5:3 → add filler geometry.
 
 ## First playable scope
 
-Vaniville Town → Route 1 → Aquacorde Town. 3–4 wild species, one trainer. Full Kalos only
+Vaniville Town → Route 1 → Aquacorde Town → Route 2. Route 1 has no tall grass in X/Y, so Route 2
+is where the first wild Pokémon are. 3–4 wild species, one trainer. Full Kalos only
 after the loop works end to end: walk, battle, catch, save, see other players.
 
 ## Roadmap
@@ -91,18 +117,19 @@ after the loop works end to end: walk, battle, catch, save, see other players.
 |---|---|---|
 | 0. Asset spike | One Pokémon model + one town map from the RomFS into Godot — **by hand first** (SPICA/Ohana3DS → Blender → glTF), then automate in the importer | Garchomp stands in Vaniville Town, viewed at 16:9 with edge issues noted |
 | 1. Overworld | Grid movement, camera, collision, map transitions | Walk from Vaniville through Route 1 to Aquacorde |
-| 2. Multiplayer | Colyseus rooms, accounts, position sync | Two clients see each other walking |
+| 2. Multiplayer | Colyseus rooms, accounts (register/login ✅ server), Godot login screen, position sync, character customization | Two logged-in players with different outfits see each other walking |
 | 3. Wild battles | Encounter tables, Showdown sim + catch/EXP/AI wrapper, battle UI | Catch a Pokémon and it saves |
 | 4. Progression | NPCs, trainers, events, items, Pokémon Centers, gyms, Mega Evolution (Key Stone, Mega Stones, Mega button) | Earn badge 1; Lucario Mega Evolves |
-| 5. Social | PvP, trading, friends, chat channels | Two players trade and battle |
+| 5. Social | PvP, trading, friends, chat channels, GTL marketplace | Two players trade and battle; a Pokémon sells on the GTL |
 
 Phase 0 is the biggest risk: if the asset pipeline doesn't work, nothing else matters.
 Phase 2 can start in parallel with Phase 0, since the server doesn't depend on assets.
 
 ## Risks to check early
 
-- **Colyseus + Godot:** no official Godot SDK; community ones may lag Godot 4. Check at the
-  start of Phase 2. Fallback: plain WebSocket client with our own JSON messages.
+- **Colyseus + Godot:** Colyseus 0.18 lists an official Godot SDK (colyseus/native-sdk). Still
+  confirm it works with our Godot 4 version at the start of Phase 2. Fallback: plain WebSocket
+  client with our own JSON messages.
 - **Phase 3 size:** the battle wrapper (catching, EXP, evolution, AI) is bigger than it looks.
 
 ## Hosting
@@ -114,7 +141,7 @@ Phase 2 can start in parallel with Phase 0, since the server doesn't depend on a
 ## Decided
 
 - Importer language: C# (reuse SPICA / Ohana3DS / pk3DS parsers).
-- First playable scope: Vaniville → Route 1 → Aquacorde.
+- First playable scope: Vaniville → Route 1 → Aquacorde → Route 2.
 - Movement: grid-based.
 - Story events: own format, not emulated X/Y scripts.
 - Single screen: bottom-screen features become PC UI; own UI art, not extracted textures.

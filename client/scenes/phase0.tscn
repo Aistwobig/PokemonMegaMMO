@@ -1,0 +1,56 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="PackedScene" path="res://asset-cache/phase0/vaniville/vaniville_north.dae" id="1_north"]
+[ext_resource type="PackedScene" path="res://asset-cache/phase0/vaniville/vaniville_south.dae" id="2_south"]
+[ext_resource type="PackedScene" path="res://asset-cache/phase0/garchomp/garchomp.dae" id="3_garchomp"]
+[ext_resource type="Script" path="res://scripts/phase0_camera.gd" id="4_cam"]
+[ext_resource type="Script" path="res://scripts/phase0_materials.gd" id="5_mats"]
+[ext_resource type="Script" path="res://scripts/hud.gd" id="6_hud"]
+
+[sub_resource type="Environment" id="Env_1"]
+background_mode = 1
+background_color = Color(0.53, 0.75, 0.95, 1)
+ambient_light_source = 2
+ambient_light_color = Color(1, 1, 1, 1)
+ambient_light_energy = 0.6
+tonemap_mode = 0
+
+[node name="Phase0" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env_1")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 0, 0)
+light_energy = 0.9
+shadow_enabled = true
+
+[node name="World" type="Node3D" parent="."]
+script = ExtResource("5_mats")
+
+[node name="VanivilleNorth" parent="World" instance=ExtResource("1_north")]
+
+[node name="VanivilleSouth" parent="World" instance=ExtResource("2_south")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 720)
+
+[node name="Garchomp" parent="World" instance=ExtResource("3_garchomp")]
+transform = Transform3D(-0.4, 0, 0, 0, 0.4, 0, 0, 0, -0.4, 54, 143, 470)
+
+[node name="Camera3D" type="Camera3D" parent="."]
+fov = 30.0
+far = 20000.0
+current = true
+script = ExtResource("4_cam")
+target = Vector3(54, 190, 470)
+distance = 650.0
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("6_hud")
+
+[node name="Label" type="Label" parent="HUD"]
+offset_left = 16.0
+offset_top = 12.0
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.8)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 18
+text = "Trainer"
