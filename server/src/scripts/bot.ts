@@ -2,6 +2,7 @@
 // toward Route 2 and into the grass, following warps the way the real client will.
 // Start the server first, then:
 //   npm run bot -- Ash
+//   npm run bot -- Ash --wander 60     walk around the current map at random for 60 seconds
 // Run two at once to see them notice each other.
 
 import { Client, type Room } from "@colyseus/sdk";
@@ -64,5 +65,28 @@ async function visit(mapId: string, ticket?: string): Promise<void> {
   if (!encountered) console.log(`[${name}] walked the whole route without an encounter`);
 }
 
-await visit(await login());
+/** Random walk on one map, avoiding warps, so other clients have someone to watch. */
+async function wander(mapId: string, seconds: number): Promise<void> {
+  const room: Room = await client.joinOrCreate(mapId, {});
+  let warped = false;
+  room.onMessage("warp", () => (warped = true));
+  room.onMessage("wildEncounter", () => room.send("battleEnd"));
+  console.log(`[${name}] wandering ${mapId} for ${seconds}s`);
+  await sleep(300); // let the first state sync arrive
+  const dirs = ["up", "down", "left", "right"];
+  let dir = "down";
+  const until = Date.now() + seconds * 1000;
+  while (Date.now() < until && !warped) {
+    if (Math.random() < 0.3) dir = dirs[Math.floor(Math.random() * 4)];
+    if (dir === "up" && (room.state.players?.get(room.sessionId)?.y ?? 99) <= 2) dir = "down"; // stay off the exit
+    room.send("move", dir);
+    await sleep(Math.random() < 0.2 ? 900 : 260);
+  }
+  await room.leave();
+}
+
+const mapId = await login();
+const wanderAt = process.argv.indexOf("--wander");
+if (wanderAt > 0) await wander(mapId, Number(process.argv[wanderAt + 1] ?? 30));
+else await visit(mapId);
 process.exit(0);

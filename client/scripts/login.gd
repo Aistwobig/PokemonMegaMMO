@@ -3,7 +3,8 @@ extends Node
 
 signal logged_in
 
-const WORLD_SCENE := "res://scenes/phase0.tscn"
+const WORLD_SCENE := "res://scenes/world.tscn"
+const BACKGROUND_SCENE := "res://scenes/phase0.tscn"
 const BACKGROUND_ASSET := "res://asset-cache/phase0/vaniville/vaniville_north.dae"
 const USERNAME := "^[A-Za-z0-9_]{3,16}$" # same rules as the server, for instant feedback
 const TRAINER_NAME := "^[\\p{L}\\p{N} ]{1,12}$"
@@ -132,7 +133,7 @@ func _enter_world() -> void:
 func _add_background() -> void:
 	if not ResourceLoader.exists(BACKGROUND_ASSET):
 		return # no asset cache yet: the plain backdrop in the scene stays
-	var world: Node = (load(WORLD_SCENE) as PackedScene).instantiate()
+	var world: Node = (load(BACKGROUND_SCENE) as PackedScene).instantiate()
 	world.get_node("HUD").queue_free()
 	var cam := world.get_node("Camera3D")
 	cam.set("auto_orbit", 4.0)

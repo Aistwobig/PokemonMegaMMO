@@ -38,18 +38,21 @@ export class MapRoom extends Room<{ state: MapState }> {
     this.onMessage("battleEnd", (client) => this.inBattle.delete(client.sessionId));
   }
 
-  // Runs before onJoin. The client sends its login token (client.auth.token in the SDK).
-  // You can only join the map your trainer is saved on, or the one a warp ticket points to.
-  async onAuth(_client: Client, options: JoinOptions = {}, context: AuthContext): Promise<AuthData> {
-    const trainer = await findSession(context.token);
+  // Runs when the client asks for a seat, with its login token (client.auth.token in the SDK).
+  // Static, because that is the stage every SDK sends the token in: the Godot SDK only sends it
+  // here, not again when the room connection opens.
+  static async onAuth(token: string, _options: unknown, _context: AuthContext): Promise<AuthData> {
+    const trainer = await findSession(token);
     if (!trainer) throw new ServerError(401, "Not logged in.");
-    const transfer = redeemTicket(options.ticket, this.map.id, trainer.trainerId);
-    if (!transfer && trainer.mapId !== this.map.id) throw new ServerError(403, `Your trainer is in ${trainer.mapId}.`);
-    return { trainer, transfer };
+    return { trainer };
   }
 
-  onJoin(client: Client, _options: JoinOptions, auth: AuthData) {
-    const { trainer, transfer } = auth;
+  // You can only join the map your trainer is saved on, or the one a warp ticket points to.
+  onJoin(client: Client, options: JoinOptions = {}, auth: AuthData) {
+    const { trainer } = auth;
+    const transfer = redeemTicket(options.ticket, this.map.id, trainer.trainerId);
+    if (!transfer && trainer.mapId !== this.map.id) throw new ServerError(403, `Your trainer is in ${trainer.mapId}.`);
+    (client.auth as AuthData).transfer = transfer;
     claimOnline(trainer.trainerId, client);
     const spawn = transfer ?? (isWalkable(this.map, trainer.x, trainer.y) ? trainer : this.map.spawn);
     this.state.players.set(client.sessionId, new Player({

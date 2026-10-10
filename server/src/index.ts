@@ -14,6 +14,9 @@ for (const map of maps.values()) {
 
 const server = defineServer({
   rooms,
+  // We have our own accounts (src/auth). Colyseus's built-in auth module would otherwise discard
+  // tokens it can't verify as JWTs, and rooms would never see them.
+  auth: false,
   express: (app) => authRoutes(app, maps),
 });
 await listen(server, config.port);

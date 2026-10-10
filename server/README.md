@@ -51,6 +51,9 @@ HTTP on the same port (`http://localhost:2567`), JSON bodies:
   5 new accounts per hour (per IP). Running the tests repeatedly hits these; start the server with
   `AUTH_RATE_LIMITS=off` for local testing only.
 - A trainer can be online once. Logging in again closes the older connection with code `4001`.
+- Rooms check the token in the **static** `MapRoom.onAuth` (the seat-reservation stage): the Godot
+  SDK sends it only there. The map/ticket check is in `onJoin`. Colyseus's own `@colyseus/auth`
+  is off (`auth: false`), since it would discard tokens that aren't its JWTs.
 
 ## Client protocol
 
