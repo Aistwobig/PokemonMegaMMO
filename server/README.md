@@ -27,7 +27,8 @@ src/world/maps.ts      loads data/maps, tile/warp/encounter helpers
 src/world/transfers.ts warp tickets so clients can't choose where they arrive
 src/battle/showdown.ts Showdown sim wrapper
 src/db/pool.ts         Postgres pool + transaction helper
-data/maps/*.json       hand-written map data (placeholders for now)
+data/maps/*.json       map data: Vaniville has the real walkable tiles (importer/tools/make_map.py);
+                       spawns, warps and the other maps are hand-written placeholders
 db/migrations/*.sql    database schema
 ```
 

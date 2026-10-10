@@ -115,8 +115,13 @@ export function authRoutes(app: express.Application, maps: Map<string, GameMap>)
     const session = await findSession(bearer(req));
     if (!session) throw new HttpError(401, "Not logged in.");
     if (!session.appearance) throw new HttpError(400, "Create your character first.");
-    await pool.query(`UPDATE trainers SET flags = flags || '{"intro": true}' WHERE id = $1`, [session.trainerId]);
-    res.json({ trainer: publicTrainer({ ...session, flags: { ...session.flags, intro: true } }) });
+    // Leaving the house puts the trainer in front of their front door in Vaniville.
+    const door = { mapId: startMap.id, x: startMap.spawn.x, y: startMap.spawn.y, facing: "down" };
+    await pool.query(
+      `UPDATE trainers SET flags = flags || '{"intro": true}', map_id = $2, x = $3, y = $4, facing = $5 WHERE id = $1`,
+      [session.trainerId, door.mapId, door.x, door.y, door.facing],
+    );
+    res.json({ trainer: publicTrainer({ ...session, ...door, flags: { ...session.flags, intro: true } }) });
   }));
 }
 

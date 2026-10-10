@@ -19,9 +19,10 @@ func _ready() -> void:
 	env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.environment.ambient_light_color = Color.WHITE
 	add_child(env)
-	add_child(RoomMap.load_model("res://asset-cache/maps/%s.dae" % map))
+	var base := map if map.begins_with("res://") else "res://asset-cache/maps/" + map
+	add_child(RoomMap.load_model(base + ".dae"))
 
-	var grid := RoomMap.load_tiles("res://asset-cache/maps/%s.tiles.json" % map)
+	var grid := RoomMap.load_tiles(base + ".tiles.json")
 	for y in range(rect.position.y, rect.end.y):
 		for x in range(rect.position.x, rect.end.x):
 			var t: int = grid.tiles[y * grid.width + x]

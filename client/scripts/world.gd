@@ -4,10 +4,13 @@ extends Node3D
 
 const TOWN_SCENE := "res://scenes/phase0.tscn"
 const LOGIN_SCENE := "res://scenes/login.tscn"
-const TILE := 18.0 # world units per map tile (a 720-unit map chunk is 40Ã—40 tiles)
-const GROUND_Y := 143.0 # Vaniville's plaza height; real per-tile heights come with the collision data
-## Where tile (0, 0) of the server's placeholder Vaniville grid sits in the 3D town.
-const GRID_ORIGIN := Vector3(54.0 - 5 * TILE, GROUND_Y, 470.0 - 5 * TILE)
+const TILE := 18.0 # world units per map tile (a 720-unit map chunk is 40×40 tiles)
+const GROUND_Y := 144.0 # Vaniville's usual ground height, where the height probe starts looking
+## Server tile (0, 0) of Vaniville is tile (0, 0) of the north chunk, whose model is centered on the
+## origin; the south chunk sits 720 units further south, so rows 40+ continue onto it.
+const GRID_ORIGIN := Vector3(-360.0 + TILE / 2, 0, -360.0 + TILE / 2)
+## Close behind and above, like X/Y's town camera (its real per-zone settings aren't decoded yet).
+const CAMERA_OFFSET := Vector3(0, 230, 290)
 const STEP_TIME := 0.22 # seconds per tile; a bit slower than the server's 200 ms step limit
 const FACING_YAW := {"down": 0.0, "up": 180.0, "left": -90.0, "right": 90.0}
 
@@ -17,6 +20,9 @@ var _players := {} # sessionId -> RemoteTrainer
 var _camera: Camera3D
 var _status: Label
 var _next_step_at := 0.0
+var _heights := {} # Vector2i tile -> ground height
+## Tests turn this off so stray key presses (the window takes focus while you type) can't move.
+var accept_input := true
 
 
 func _ready() -> void:
@@ -24,6 +30,7 @@ func _ready() -> void:
 	town.get_node("Camera3D").queue_free()
 	town.get_node("World/Garchomp").queue_free()
 	add_child(town)
+	_add_ground_collision(town)
 	_camera = Camera3D.new()
 	_camera.fov = 30.0
 	_camera.far = 20000.0
@@ -38,7 +45,7 @@ func _ready() -> void:
 
 
 func _join(map_id: String, ticket: String) -> void:
-	_status.text = "Connecting to %sâ€¦" % map_id
+	_status.text = "Connecting to %s…" % map_id
 	if _client == null:
 		_client = Colyseus.Client.new(Session.server_url.replace("http", "ws"))
 		_client.auth.set_token(Session.token)
@@ -58,7 +65,7 @@ func _on_message(type: Variant, data: Variant) -> void:
 	match str(type):
 		"warp":
 			# Other maps aren't built in 3D yet: say so instead of leaving town.
-			_status.text = "Path to %s â€” that map isn't in 3D yet." % data.get("to", "?")
+			_status.text = "Path to %s — that map isn't in 3D yet." % data.get("to", "?")
 		"wildEncounter":
 			_status.text = "A wild %s appeared! (battles come in Phase 3)" % data.get("species", "?")
 			_room.send_message("battleEnd")
@@ -96,10 +103,10 @@ func _sync_players() -> void:
 func _process(_delta: float) -> void:
 	var me: RemoteTrainer = _players.get(_room.get_session_id()) if _room else null
 	if me:
-		_camera.look_at_from_position(me.position + Vector3(0, 420, 560), me.position + Vector3(0, 30, 0))
+		_camera.look_at_from_position(me.position + CAMERA_OFFSET, me.position + Vector3(0, 22, 0))
 	if _room == null or not _room.connected:
 		return
-	var dir := _held_direction()
+	var dir := _held_direction() if accept_input else ""
 	var now := Time.get_ticks_msec() / 1000.0
 	if dir != "" and now >= _next_step_at:
 		_room.send_message("move", dir)
@@ -115,7 +122,38 @@ func _held_direction() -> String:
 
 
 func _tile_to_world(x: int, y: int) -> Vector3:
-	return GRID_ORIGIN + Vector3(x * TILE, 0, y * TILE)
+	var key := Vector2i(x, y)
+	if not _heights.has(key):
+		_heights[key] = _ground_height(GRID_ORIGIN.x + x * TILE, GRID_ORIGIN.z + y * TILE)
+	return GRID_ORIGIN + Vector3(x * TILE, _heights[key], y * TILE)
+
+
+## The town's ground under a point: rays down onto the town model, skipping tree tops and roofs by
+## taking the highest surface that isn't far above the usual ground height.
+func _ground_height(x: float, z: float) -> float:
+	var space := get_world_3d().direct_space_state
+	var from := Vector3(x, GROUND_Y + 400, z)
+	var best := GROUND_Y
+	var found := false
+	for i in 12:
+		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, Vector3(x, GROUND_Y - 300, z)))
+		if hit.is_empty():
+			break
+		var y: float = hit.position.y
+		if hit.normal.y > 0.6 and y < GROUND_Y + 40:
+			best = y
+			found = true
+			break
+		from = hit.position - Vector3(0, 0.5, 0)
+	return best if found else GROUND_Y
+
+
+## Collision shapes from the town model, for the height probe.
+func _add_ground_collision(town: Node) -> void:
+	for c in town.get_node("World").find_children("*", "MeshInstance3D", true, false):
+		var mi := c as MeshInstance3D
+		if mi.mesh:
+			mi.create_trimesh_collision()
 
 
 func _exit_tree() -> void:

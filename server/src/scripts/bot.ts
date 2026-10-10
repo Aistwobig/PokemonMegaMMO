@@ -7,6 +7,7 @@
 
 import { Client, type Room } from "@colyseus/sdk";
 import { config } from "../config.ts";
+import { VANIVILLE_TO_ROUTE1 } from "./paths.ts";
 
 const name = process.argv[2] ?? "Bot";
 const password = `bot-password-${name.length}`; // test accounts only
@@ -28,9 +29,10 @@ async function login(): Promise<string> {
   return res.data.trainer.mapId;
 }
 
-// Directions to walk in each map until the next warp (matches the placeholder maps).
+// Directions to walk in each map until the next warp. Vaniville is the real town: from the player's
+// front door, around the houses to the north road. The others are still placeholders.
 const ROUTE: Record<string, string[]> = {
-  vaniville: Array(5).fill("up"),
+  vaniville: VANIVILLE_TO_ROUTE1,
   route1: Array(12).fill("up"),
   aquacorde: Array(8).fill("up"),
   route2: Array(12).fill("up"),

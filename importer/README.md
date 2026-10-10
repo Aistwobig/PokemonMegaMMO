@@ -12,6 +12,8 @@ For now these are manual steps; they become one `import` command later.
 - `tools/garc.py`: lists, dumps and splits GARC archives and the GF packs inside them.
 - `tools/text.py`: decodes X/Y text files (game text and story text).
 - `tools/tiles.py`: reads a map chunk's 40×40 tile grid.
+- `tools/make_map.py`: builds a server map (walkable/blocked only) from map chunks.
+- `tools/zone.py`: zone table and zone events (furniture, NPCs, warps, triggers).
 - `tools/make_catalog.py`: builds `server/data/appearance.json` from the trainer manifests.
 
 Python 3 (`py -3` on Windows). Below, `R` is the RomFS folder and `C` is `client/asset-cache`.
@@ -21,6 +23,7 @@ Python 3 (`py -3` on Windows). Below, `R` is the RomFS folder and `C` is `client
 | GARC | Contents |
 |---|---|
 | `a/0/0/7` | Pokémon models |
+| `a/0/1/2` | Zones: entry 360 = zone table; entry N = zone N's events (see `zone.py`). Zone 0 = the map01 overworld (Vaniville, Route 1, Aquacorde); zones 1–3 = the player's house |
 | `a/0/1/3` | Area data; sub-file 11 (and 1) = the area's textures |
 | `a/0/2/1` | Overworld characters, one "MM" pack each: 0 = model, 1 = motions. Entry N = `trNNNN` for 3–36 (tr0003 Shauna, tr0004 Tierno, tr0005 Trevor, tr0006 Sycamore, tr0007 Mom) |
 | `a/0/4/1` | Map chunks, one "GR" pack each: 0 = tile grid, 1 = model, 2 = `coll` |
@@ -30,8 +33,11 @@ Python 3 (`py -3` on Windows). Below, `R` is the RomFS folder and `C` is `client
 
 Chunk models are centered: tile (x, y) covers model x ∈ [18x − 360, 18x − 342), likewise for z.
 Grid values: `0x00000020` floor, `0x01000021` wall. Other values are special tiles (bed, PC,
-bookshelf, ...); bit 0 set means solid. Stairs and doors aren't marked in the grid. They come from
-the zone's event data, which isn't decoded yet, so `client/scripts/home.gd` lists them by hand.
+bookshelf, ...); bit 0 set means solid. Stairs and doors aren't marked in the grid; they're zone
+events. Warps store their position in world units (x, height, z ÷ 18 = global tile; Vaniville's
+player-house door = tile 467, 596), triggers and furniture in global tiles. Global tile = chunk ×
+40 + tile, with the chunk position from the zone's map matrix (map01: Vaniville = chunks (11,14)
+and (11,15), so global (440, 560) is the town's top-left).
 
 ## Steps
 
@@ -67,6 +73,12 @@ py -3 tools/tiles.py json work/gr162/0.bin C/maps/t01r01/house_1f.tiles.json   (
 BchTool parts C/trainers/f1 A/00008.bch <parts 9..63 and 7, minus 52 and 53> --textures <65..396> --motions <mm pack 1, sub-file 1>
 BchTool parts C/trainers/f2 A/00398.bch <parts 399..432 and 397, minus 425 and 426> --textures <433..630> --motions <mm pack 2, sub-file 1>
 py -3 tools/make_catalog.py
+```
+
+**Server town maps.** Walkable tiles only; spawn and warps in the file are kept by hand:
+
+```
+py -3 tools/make_map.py R/a/0/4/1 ../server/data/maps/vaniville.json --id vaniville --name "Vaniville Town" --chunks 12,14 --origin 440,560 --keep-meta ../server/data/maps/vaniville.json
 ```
 
 **Dev views** for checking an export (Godot, from `client/`):

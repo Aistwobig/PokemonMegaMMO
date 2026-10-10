@@ -1,7 +1,9 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-// Map data lives in server/data/maps/*.json. It's ours (hand-written), not extracted from the ROM.
+// Map data lives in server/data/maps/*.json. Spawns, warps and encounters are hand-written; real
+// towns also carry their walkable tiles from the RomFS (importer/tools/make_map.py), the only map
+// data the server takes from the game. Placeholder maps are hand-drawn.
 // Tile legend:  . walkable   # blocked   G tall grass (walkable, can trigger encounters)
 
 export type Direction = "up" | "down" | "left" | "right";
@@ -24,6 +26,7 @@ export interface Encounter {
 export interface GameMap {
   id: string;
   name: string;
+  origin?: { x: number; y: number }; // real maps: top-left tile in the X/Y map matrix
   tiles: string[];
   spawn: { x: number; y: number };
   warps: Warp[];

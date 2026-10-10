@@ -6,6 +6,7 @@
 import { Client, type Room } from "@colyseus/sdk";
 import { config } from "../config.ts";
 import { pool } from "../db/pool.ts";
+import { VANIVILLE_TO_ROUTE1 } from "./paths.ts";
 
 const http = `http://localhost:${config.port}`;
 const ws = `ws://localhost:${config.port}`;
@@ -94,15 +95,23 @@ if (typeof first !== "string") {
   check("second login kicks the first (4001)", kicked === 4001, `close code ${kicked}`);
 
   if (typeof second !== "string") {
-    // Walk up until the warp to route1, then check the destination was saved.
+    // Walk from the front door to the north road (the warp to route1), then check the
+    // destination was saved. The first step up is into the house wall and must not move.
     let warp: { to: string; ticket: string } | undefined;
     second.onMessage("warp", (m) => (warp = m));
     second.onMessage("wildEncounter", () => {});
-    for (let i = 0; i < 15 && !warp; i++) {
-      second.send("move", "up");
-      await sleep(250);
+    const start = second.state.players.get(second.sessionId);
+    check("new trainer starts at their front door", start?.x === 27 && start?.y === 37, JSON.stringify(start));
+    second.send("move", "up");
+    await sleep(250);
+    const blocked = second.state.players.get(second.sessionId);
+    check("house wall blocks", blocked?.y === 37, JSON.stringify(blocked));
+    for (const dir of VANIVILLE_TO_ROUTE1) {
+      if (warp) break;
+      second.send("move", dir);
+      await sleep(210);
     }
-    check("warp received", !!warp, "walked 15 steps up without a warp");
+    check("warp received", !!warp, "walked the whole route without a warp");
     if (warp) {
       const saved = await pool.query("SELECT t.map_id FROM trainers t JOIN accounts a ON a.id = t.account_id WHERE a.username = $1", [user]);
       check("warp destination saved before arriving", saved.rows[0]?.map_id === warp.to, JSON.stringify(saved.rows[0]));

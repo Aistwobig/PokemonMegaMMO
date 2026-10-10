@@ -21,7 +21,7 @@
   "spawn": { "x": 3, "y": 12 },
   "warps": [
     { "x": 3, "y": 0, "to": "aquacorde", "toX": 5, "toY": 8 },
-    { "x": 3, "y": 13, "to": "vaniville", "toX": 5, "toY": 1 }
+    { "x": 3, "y": 13, "to": "vaniville", "toX": 20, "toY": 1 }
   ],
   "encounterRate": 0,
   "encounters": []
