@@ -30,7 +30,7 @@ export class MapRoom extends Room<{ state: MapState }> {
 
   onCreate(options: { map: GameMap }) {
     this.map = options.map;
-    this.setState(new MapState({ mapId: this.map.id }));
+    this.setState(new MapState({ mapId: this.map.id, originX: this.map.origin?.x ?? -1, originY: this.map.origin?.y ?? -1 }));
 
     this.onMessage("move", (client, dir: unknown) => this.handleMove(client, dir));
 

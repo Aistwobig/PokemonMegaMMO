@@ -83,7 +83,12 @@ Log in first, set the token on the SDK (`client.auth.token = token`), then join 
 | server → client | `warp` | `{ to, ticket }` — leave this room, join `to` with `{ ticket }` |
 | server → client | `wildEncounter` | `{ species, level }` |
 
-Synced state: `mapId`, `players` (map of sessionId → `{ name, x, y, facing }`).
+Synced state: `mapId`, `originX`/`originY` (where tile (0, 0) sits on the X/Y overworld, in global
+tiles; -1 for placeholder maps), `players` (map of sessionId → `{ name, x, y, facing, look }`).
+
+Vaniville, Route 1, Aquacorde and Route 2 are slices of one overworld (map01). Each owns a band of
+rows; the row just past each edge is a warp onto the same tile of the neighbouring map, so clients
+that keep the 3D world loaded across the warp see one seamless walk.
 
 ## Not done yet
 

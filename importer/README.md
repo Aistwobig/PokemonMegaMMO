@@ -26,13 +26,14 @@ Python 3 (`py -3` on Windows). Below, `R` is the RomFS folder and `C` is `client
 | `a/0/1/2` | Zones: entry 360 = zone table; entry N = zone N's events (see `zone.py`). Zone 0 = the map01 overworld (Vaniville, Route 1, Aquacorde); zones 1–3 = the player's house |
 | `a/0/1/3` | Area data; sub-file 11 (and 1) = the area's textures |
 | `a/0/2/1` | Overworld characters, one "MM" pack each: 0 = model, 1 = motions. Entry N = `trNNNN` for 3–36 (tr0003 Shauna, tr0004 Tierno, tr0005 Trevor, tr0006 Sycamore, tr0007 Mom) |
-| `a/0/4/1` | Map chunks, one "GR" pack each: 0 = tile grid, 1 = model, 2 = `coll` |
+| `a/0/4/1` | Map chunks, one "GR" pack each: 0 = tile grid, 1 = model, 2 = `coll`. map01 = GR 0–15 |
+| `a/0/4/2` | Map matrices: u32 0, u16 w, u16 h, then a GR id per chunk (0xFFFF = none). Matrix 0 = map01 |
 | `a/0/7/4` | English game text (100 = Sycamore's intro, 72 = location names) |
 | `a/0/8/2` | English story text (55 = the player's house, 57 = the neighbors) |
 | `a/0/8/8` | Player overworld clothing parts (girl 7–63, boy 397–432) |
 
 Chunk models are centered: tile (x, y) covers model x ∈ [18x − 360, 18x − 342), likewise for z.
-Grid values: `0x00000020` floor, `0x01000021` wall. Other values are special tiles (bed, PC,
+Grid values: `0x00000020` floor, `0x01000021` wall, `0x20002004` tall grass. Other values are special tiles (bed, PC,
 bookshelf, ...); bit 0 set means solid. Stairs and doors aren't marked in the grid; they're zone
 events. Warps store their position in world units (x, height, z ÷ 18 = global tile; Vaniville's
 player-house door = tile 467, 596), triggers and furniture in global tiles. Global tile = chunk ×
@@ -75,10 +76,20 @@ BchTool parts C/trainers/f2 A/00398.bch <parts 399..432 and 397, minus 425 and 4
 py -3 tools/make_catalog.py
 ```
 
-**Server town maps.** Walkable tiles only; spawn and warps in the file are kept by hand:
+**The overworld** (map01: Vaniville, Route 1, Aquacorde, Route 2). Every chunk for the client,
+with the overworld textures (area data 2):
 
 ```
-py -3 tools/make_map.py R/a/0/4/1 ../server/data/maps/vaniville.json --id vaniville --name "Vaniville Town" --chunks 12,14 --origin 440,560 --keep-meta ../server/data/maps/vaniville.json
+py -3 tools/garc.py split R/a/0/1/3 2 work/ad2
+for each GR 0..15:  py -3 tools/garc.py split R/a/0/4/1 N work/grN
+                    BchTool export C/maps/map01 map01_XX_YY work/grN/1.bch work/ad2/11.bch work/ad2/1.bch
+```
+
+(XX_YY is the chunk name inside the BCH, e.g. GR 12 = `map01_11_14`.) And the server maps, cut
+from the same grid by rows, with edge warps between neighbours (spawn and encounters are kept):
+
+```
+py -3 tools/make_map.py R ../server/data/maps --matrix 0 --cols 440,479   --map "vaniville:Vaniville Town:560:596-639" --map "route1:Route 1:552:553-595"   --map "aquacorde:Aquacorde Town:480:481-552" --map "route2:Route 2:440:440-480"
 ```
 
 **Dev views** for checking an export (Godot, from `client/`):

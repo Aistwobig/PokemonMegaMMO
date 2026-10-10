@@ -7,7 +7,7 @@
 
 import { Client, type Room } from "@colyseus/sdk";
 import { config } from "../config.ts";
-import { VANIVILLE_TO_ROUTE1 } from "./paths.ts";
+import { AQUACORDE_TO_ROUTE2, ROUTE1_TO_AQUACORDE, ROUTE2_GRASS, VANIVILLE_TO_ROUTE1 } from "./paths.ts";
 
 const name = process.argv[2] ?? "Bot";
 const password = `bot-password-${name.length}`; // test accounts only
@@ -29,13 +29,12 @@ async function login(): Promise<string> {
   return res.data.trainer.mapId;
 }
 
-// Directions to walk in each map until the next warp. Vaniville is the real town: from the player's
-// front door, around the houses to the north road. The others are still placeholders.
+// Directions to walk in each map until the next warp (see paths.ts).
 const ROUTE: Record<string, string[]> = {
   vaniville: VANIVILLE_TO_ROUTE1,
-  route1: Array(12).fill("up"),
-  aquacorde: Array(8).fill("up"),
-  route2: Array(12).fill("up"),
+  route1: ROUTE1_TO_AQUACORDE,
+  aquacorde: AQUACORDE_TO_ROUTE2,
+  route2: ROUTE2_GRASS,
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

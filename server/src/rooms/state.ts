@@ -13,6 +13,10 @@ export type Player = SchemaType<typeof Player>;
 
 export const MapState = schema({
   mapId: t.string(),
+  // Where tile (0, 0) sits in the X/Y overworld (global tiles), so clients can draw neighbouring
+  // maps as one world. -1 for placeholder maps that aren't on the overworld.
+  originX: t.int32().default(-1),
+  originY: t.int32().default(-1),
   players: t.map(Player),
 }, "MapState");
 export type MapState = SchemaType<typeof MapState>;

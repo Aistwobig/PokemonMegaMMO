@@ -2,13 +2,16 @@ extends Node3D
 ## The online overworld: joins the map room the trainer is saved on, shows every player in it and
 ## sends arrow-key/WASD moves. The server decides where everyone is; this only draws it.
 
-const TOWN_SCENE := "res://scenes/phase0.tscn"
+const TOWN_SCENE := "res://scenes/phase0.tscn" # sky, sun, HUD and material fixes
 const LOGIN_SCENE := "res://scenes/login.tscn"
+## The overworld (Vaniville, Route 1, Aquacorde, Route 2): every chunk of map01, from
+## importer/README.md. Without it, the two Vaniville chunks from Phase 0 are used.
+const OVERWORLD := "res://asset-cache/maps/map01/"
 const TILE := 18.0 # world units per map tile (a 720-unit map chunk is 40×40 tiles)
-const GROUND_Y := 144.0 # Vaniville's usual ground height, where the height probe starts looking
-## Server tile (0, 0) of Vaniville is tile (0, 0) of the north chunk, whose model is centered on the
-## origin; the south chunk sits 720 units further south, so rows 40+ continue onto it.
-const GRID_ORIGIN := Vector3(-360.0 + TILE / 2, 0, -360.0 + TILE / 2)
+const GROUND_Y := 144.0 # Vaniville's ground height, where the height probe starts if it knows nothing
+## World placement: chunk (11, 14), Vaniville's north half, is centered on the origin, so global
+## tile (440, 560) starts at (-360, -360) and every other chunk follows at 720 units per chunk.
+const ORIGIN_CHUNK := Vector2i(11, 14)
 ## Close behind and above, like X/Y's town camera (its real per-zone settings aren't decoded yet).
 const CAMERA_OFFSET := Vector3(0, 230, 290)
 const STEP_TIME := 0.22 # seconds per tile; a bit slower than the server's 200 ms step limit
@@ -20,7 +23,9 @@ var _players := {} # sessionId -> RemoteTrainer
 var _camera: Camera3D
 var _status: Label
 var _next_step_at := 0.0
-var _heights := {} # Vector2i tile -> ground height
+var _heights := {} # Vector2i global tile -> ground height
+var _origin := Vector2i(440, 560) # global tile of the current room's (0, 0), from the room state
+var _carry: RemoteTrainer # our own trainer, kept across a warp so the walk looks seamless
 ## Tests turn this off so stray key presses (the window takes focus while you type) can't move.
 var accept_input := true
 
@@ -29,6 +34,7 @@ func _ready() -> void:
 	var town := (load(TOWN_SCENE) as PackedScene).instantiate()
 	town.get_node("Camera3D").queue_free()
 	town.get_node("World/Garchomp").queue_free()
+	_load_overworld(town.get_node("World"))
 	add_child(town)
 	_add_ground_collision(town)
 	_camera = Camera3D.new()
@@ -50,25 +56,40 @@ func _join(map_id: String, ticket: String) -> void:
 		_client = Colyseus.Client.new(Session.server_url.replace("http", "ws"))
 		_client.auth.set_token(Session.token)
 	var options := {} if ticket == "" else {ticket = ticket}
-	_room = _client.join_or_create(map_id, options)
-	if _room == null:
+	var room: Colyseus.Room = _client.join_or_create(map_id, options)
+	_room = room
+	if room == null:
 		_status.text = "Couldn't join %s." % map_id
 		return
-	_room.joined.connect(func() -> void: _status.text = "")
-	_room.state_changed.connect(_sync_players)
-	_room.message_received.connect(_on_message)
-	_room.error.connect(func(code: int, message: String) -> void: _status.text = "Server: %s (%d)" % [message, code])
-	_room.left.connect(_on_left)
+	# Signals from a room we've already left (after a warp) are ignored.
+	room.joined.connect(func() -> void: if room == _room: _status.text = "")
+	room.state_changed.connect(func() -> void: if room == _room: _sync_players())
+	room.message_received.connect(func(type: Variant, data: Variant) -> void: if room == _room: _on_message(type, data))
+	room.error.connect(func(code: int, message: String) -> void: if room == _room: _status.text = "Server: %s (%d)" % [message, code])
+	room.left.connect(func(code: int, reason: String) -> void: if room == _room: _on_left(code, reason))
 
 
 func _on_message(type: Variant, data: Variant) -> void:
 	match str(type):
 		"warp":
-			# Other maps aren't built in 3D yet: say so instead of leaving town.
-			_status.text = "Path to %s — that map isn't in 3D yet." % data.get("to", "?")
+			_warp(str(data.get("to", "")), str(data.get("ticket", "")))
 		"wildEncounter":
 			_status.text = "A wild %s appeared! (battles come in Phase 3)" % data.get("species", "?")
 			_room.send_message("battleEnd")
+
+
+## Moves to the next map. Neighbouring overworld maps share one 3D world, so our trainer stays
+## where it is and only the room changes: the other players change, the view doesn't.
+func _warp(to: String, ticket: String) -> void:
+	var old := _room
+	_carry = _players.get(old.get_session_id())
+	_players.erase(old.get_session_id())
+	for sid: String in _players:
+		_players[sid].queue_free()
+	_players.clear()
+	_room = null
+	old.leave()
+	_join(to, ticket)
 
 
 func _on_left(code: int, _reason: String) -> void:
@@ -82,12 +103,19 @@ func _sync_players() -> void:
 	var state: Variant = _room.state
 	if not (state is Dictionary) or not state.has("players"):
 		return
+	if int(state.get("originX", -1)) >= 0:
+		_origin = Vector2i(int(state.originX), int(state.originY))
 	var seen := {}
 	for sid: String in state.players:
 		var p: Dictionary = state.players[sid]
 		seen[sid] = true
 		var rt: RemoteTrainer = _players.get(sid)
-		if rt == null:
+		if rt == null and _carry and sid == _room.get_session_id():
+			rt = _carry # ourselves, arriving from the previous map
+			_carry = null
+			_players[sid] = rt
+			rt.move_to(_tile_to_world(p.x, p.y), p.facing)
+		elif rt == null:
 			rt = RemoteTrainer.new(p.get("name", "Trainer"), p.get("look", ""), sid == _room.get_session_id())
 			add_child(rt)
 			rt.teleport(_tile_to_world(p.x, p.y), p.facing)
@@ -121,31 +149,63 @@ func _held_direction() -> String:
 	return ""
 
 
+## A room tile to a world position (tile center, on the ground).
 func _tile_to_world(x: int, y: int) -> Vector3:
-	var key := Vector2i(x, y)
-	if not _heights.has(key):
-		_heights[key] = _ground_height(GRID_ORIGIN.x + x * TILE, GRID_ORIGIN.z + y * TILE)
-	return GRID_ORIGIN + Vector3(x * TILE, _heights[key], y * TILE)
+	var g := _origin + Vector2i(x, y)
+	var base := ORIGIN_CHUNK * 40
+	var pos := Vector3((g.x - base.x) * TILE - 360.0 + TILE / 2, 0, (g.y - base.y) * TILE - 360.0 + TILE / 2)
+	if not _heights.has(g):
+		_heights[g] = _ground_height(pos.x, pos.z, _nearby_height(g))
+	pos.y = _heights[g]
+	return pos
 
 
-## The town's ground under a point: rays down onto the town model, skipping tree tops and roofs by
-## taking the highest surface that isn't far above the usual ground height.
-func _ground_height(x: float, z: float) -> float:
+## Height of a tile we already know near g, so the probe can follow slopes, bridges and stairs.
+func _nearby_height(g: Vector2i) -> Variant:
+	for r in range(1, 4):
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				var h: Variant = _heights.get(g + Vector2i(dx, dy))
+				if h != null:
+					return h
+	return null
+
+
+## The ground under a point: rays down onto the world model. Tree tops, roofs and bridges over
+## our heads are skipped by taking the first upward-facing surface no higher than a little above a
+## nearby known height (ref); with no ref, the first upward-facing surface from high above.
+func _ground_height(x: float, z: float, ref: Variant) -> float:
 	var space := get_world_3d().direct_space_state
-	var from := Vector3(x, GROUND_Y + 400, z)
-	var best := GROUND_Y
-	var found := false
-	for i in 12:
-		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, Vector3(x, GROUND_Y - 300, z)))
+	var top: float = (ref + 40.0) if ref != null else 3000.0
+	var from := Vector3(x, top, z)
+	for i in 16:
+		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, Vector3(x, top - 3000.0, z)))
 		if hit.is_empty():
 			break
-		var y: float = hit.position.y
-		if hit.normal.y > 0.6 and y < GROUND_Y + 40:
-			best = y
-			found = true
-			break
+		if hit.normal.y > 0.6:
+			return hit.position.y
 		from = hit.position - Vector3(0, 0.5, 0)
-	return best if found else GROUND_Y
+	return ref if ref != null else GROUND_Y
+
+
+## Puts every overworld chunk under the town scene's World node (whose script fixes materials).
+func _load_overworld(world: Node3D) -> void:
+	if not DirAccess.dir_exists_absolute(OVERWORLD):
+		return # Phase 0 assets only: keep the two Vaniville chunks in the scene
+	for node_name in ["VanivilleNorth", "VanivilleSouth"]:
+		world.get_node(node_name).free()
+	var pattern := RegEx.create_from_string("^map01_(\\d+)_(\\d+)\\.dae$")
+	for file in DirAccess.get_files_at(OVERWORLD):
+		var m := pattern.search(file)
+		if m == null:
+			continue
+		var chunk := (load(OVERWORLD + file) as PackedScene).instantiate() as Node3D
+		if chunk.find_children("*", "Skeleton3D", true, false).size() > 0 and chunk.find_children("*", "MeshInstance3D", true, false).size() <= 1:
+			chunk.free() # an empty placeholder chunk
+			continue
+		var c := Vector2i(int(m.get_string(1)), int(m.get_string(2))) - ORIGIN_CHUNK
+		chunk.position = Vector3(c.x * 720.0, 0, c.y * 720.0)
+		world.add_child(chunk)
 
 
 ## Collision shapes from the town model, for the height probe.
