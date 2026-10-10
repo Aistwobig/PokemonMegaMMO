@@ -1,0 +1,21 @@
+# Game data — never commit ROMs, keys or extracted assets
+*.3ds
+*.cia
+*.cxi
+romfs/
+asset-cache/
+*.bin
+
+# Node
+node_modules/
+dist/
+.env
+
+# Godot
+.godot/
+*.import
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
