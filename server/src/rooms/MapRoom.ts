@@ -60,6 +60,7 @@ export class MapRoom extends Room<{ state: MapState }> {
       x: spawn.x,
       y: spawn.y,
       facing: transfer?.facing ?? trainer.facing,
+      look: trainer.appearance ? JSON.stringify(trainer.appearance) : "",
     }));
   }
 

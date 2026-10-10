@@ -116,6 +116,49 @@ if (typeof first !== "string") {
   }
 }
 
+console.log("appearance");
+const calem = {
+  gender: "f2",
+  parts: {
+    face: { part: "f2_face01" }, hair: { part: "f2_hair_short" },
+    hat: { part: "f2_hat_hun", color: "d01b01" }, tops: { part: "f2_tops_jersey", color: "d01b02" },
+    btms: { part: "f2_btms_skinny", color: "d01b01" }, shoes: { part: "f2_shoes_sboots", color: "d01b01" },
+    bag: { part: "f2_bag01", color: "d01b01" },
+  },
+};
+r = await call("GET", "/auth/me", undefined, token);
+check("no look before character creation", r.data.trainer?.appearance === null, JSON.stringify(r.data));
+check("intro not seen yet", r.data.trainer?.introDone === false, JSON.stringify(r.data));
+r = await call("POST", "/trainer/intro", undefined, token);
+check("intro needs a look first", r.status === 400, JSON.stringify(r));
+r = await call("PUT", "/trainer/appearance", { look: { ...calem, gender: "f9" } }, token);
+check("unknown gender rejected", r.status === 400, JSON.stringify(r));
+r = await call("PUT", "/trainer/appearance", { look: { ...calem, parts: { ...calem.parts, hat: { part: "f2_tops_jersey", color: "d01b01" } } } }, token);
+check("part in the wrong slot rejected", r.status === 400, JSON.stringify(r));
+r = await call("PUT", "/trainer/appearance", { look: { ...calem, parts: { ...calem.parts, tops: { part: "f2_tops_jersey", color: "zz99" } } } }, token);
+check("made-up color rejected", r.status === 400, JSON.stringify(r));
+r = await call("PUT", "/trainer/appearance", { look: { ...calem, parts: { ...calem.parts, bag: undefined } } }, token);
+check("missing required slot rejected", r.status === 400, JSON.stringify(r));
+r = await call("PUT", "/trainer/appearance", { look: calem }, undefined);
+check("needs login", r.status === 401, JSON.stringify(r));
+r = await call("PUT", "/trainer/appearance", { look: calem }, token);
+check("valid look saved", r.status === 200 && r.data.trainer?.appearance?.parts?.tops?.color === "d01b02", JSON.stringify(r));
+r = await call("GET", "/auth/me", undefined, token);
+check("look comes back on /auth/me", r.data.trainer?.appearance?.gender === "f2", JSON.stringify(r.data));
+r = await call("POST", "/trainer/intro", undefined, token);
+check("intro marked as seen", r.status === 200 && r.data.trainer?.introDone === true, JSON.stringify(r));
+r = await call("GET", "/auth/me", undefined, token);
+check("intro flag saved", r.data.trainer?.introDone === true, JSON.stringify(r.data));
+const looked = await join(token, (await call("GET", "/auth/me", undefined, token)).data.trainer.mapId);
+if (typeof looked !== "string") {
+  await sleep(300);
+  const me = looked.state.players.get(looked.sessionId);
+  check("look synced to the room", JSON.parse(me?.look || "{}").parts?.hat?.part === "f2_hat_hun", JSON.stringify(me));
+  await looked.leave();
+} else {
+  check("look synced to the room", false, looked);
+}
+
 console.log("logout");
 r = await call("POST", "/auth/logout", undefined, token);
 check("logout → 204", r.status === 204, JSON.stringify(r));

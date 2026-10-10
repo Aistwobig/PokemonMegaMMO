@@ -7,6 +7,7 @@ export const Player = schema({
   x: t.int32(),
   y: t.int32(),
   facing: t.string().default("down"),
+  look: t.string().default(""), // appearance as JSON ("" = not created yet); see world/appearance.ts
 }, "Player");
 export type Player = SchemaType<typeof Player>;
 

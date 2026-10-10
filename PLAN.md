@@ -87,6 +87,20 @@ The server stores only the choices (`{ skin: 2, hair: 5, top: 17, … }`) and sy
 players; each client builds the look from its own assets. Character creation happens right after
 register. Clothing can later be bought in boutiques or earned.
 
+**Built (step 2):** girl/boy, skin tone, face, hair + color, hat, accessory, top or one-piece,
+bottoms, girls' legs (bare/socks/tights), shoes, bag — each with its X/Y color variants. The client
+assembles trainers at runtime from per-part DAEs (`importer/BchTool parts`); skin tone uses the
+`_m` skin masks. Not yet: eye color, makeup, boutiques/unlocks.
+
+### Intro
+
+**Built:** new trainers get X/Y's opening. Professor Sycamore's welcome (his model and lines from
+the RomFS, character creation in the middle) leads into waking up in the player's bedroom in
+Vaniville. Mom comes upstairs, then the player walks downstairs and out the front door into the
+online world. The house is a private client-side scene using the real tile grids. The server only
+records that the intro was seen (`introDone`). Next: Shauna and Serena/Calem greeting you outside,
+and decoding the zone event data (doors, stairs) instead of listing them by hand.
+
 ### Marketplace (GTL)
 
 A global market like PokeMMO's GTL, entirely server-side in Postgres:

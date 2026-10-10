@@ -10,12 +10,12 @@ const ROWS := 4
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	var first := int(args[0]) if args.size() > 0 else 0
-	var trainer := args[1] if args.size() > 1 else "serena"
+	var trainer := args[1] if args.size() > 1 else "f1"
 	var grid := GridContainer.new()
 	grid.columns = COLS
 	grid.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(grid)
-	var source := TrainerModel.create(trainer)
+	var source := TrainerModel.from_look(TrainerModel.default_look(trainer))
 	for i in source.motions.slice(first, first + COLS * ROWS):
 		grid.add_child(_cell(trainer, source, i))
 	source.free()
@@ -38,7 +38,7 @@ func _cell(trainer: String, source: TrainerModel, index: int) -> Control:
 	env.environment.ambient_light_color = Color.WHITE
 	vp.add_child(env)
 
-	var t := TrainerModel.create(trainer, false)
+	var t := TrainerModel.from_look(TrainerModel.default_look(trainer), false)
 	t.player.add_animation_library("", source.player.get_animation_library(""))
 	vp.add_child(t)
 	var anim := "mot%02d" % index

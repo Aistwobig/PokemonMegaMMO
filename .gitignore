@@ -22,3 +22,6 @@ Thumbs.db
 
 # Colyseus Godot SDK (installed by client/tools/install-colyseus.ps1)
 client/addons/colyseus/
+
+# Python
+__pycache__/

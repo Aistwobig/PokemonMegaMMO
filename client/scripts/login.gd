@@ -4,6 +4,8 @@ extends Node
 signal logged_in
 
 const WORLD_SCENE := "res://scenes/world.tscn"
+const CREATOR_SCENE := "res://scenes/character_creator.tscn"
+const INTRO_SCENE := "res://scenes/intro.tscn"
 const BACKGROUND_SCENE := "res://scenes/phase0.tscn"
 const BACKGROUND_ASSET := "res://asset-cache/phase0/vaniville/vaniville_north.dae"
 const USERNAME := "^[A-Za-z0-9_]{3,16}$" # same rules as the server, for instant feedback
@@ -127,7 +129,14 @@ func _show(message: String, is_error: bool) -> void:
 func _enter_world() -> void:
 	logged_in.emit()
 	if enter_world_on_login:
-		get_tree().change_scene_to_file.call_deferred(WORLD_SCENE)
+		# New trainers get the intro first: Sycamore's welcome (with character creation) and
+		# waking up at home.
+		var next := WORLD_SCENE
+		if not Session.intro_done():
+			next = INTRO_SCENE
+		elif not Session.has_appearance():
+			next = CREATOR_SCENE
+		get_tree().change_scene_to_file.call_deferred(next)
 
 
 func _add_background() -> void:

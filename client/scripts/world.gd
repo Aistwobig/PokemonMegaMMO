@@ -4,13 +4,11 @@ extends Node3D
 
 const TOWN_SCENE := "res://scenes/phase0.tscn"
 const LOGIN_SCENE := "res://scenes/login.tscn"
-const TILE := 18.0 # world units per map tile (a 720-unit map chunk is 40×40 tiles)
+const TILE := 18.0 # world units per map tile (a 720-unit map chunk is 40Ã—40 tiles)
 const GROUND_Y := 143.0 # Vaniville's plaza height; real per-tile heights come with the collision data
 ## Where tile (0, 0) of the server's placeholder Vaniville grid sits in the 3D town.
 const GRID_ORIGIN := Vector3(54.0 - 5 * TILE, GROUND_Y, 470.0 - 5 * TILE)
 const STEP_TIME := 0.22 # seconds per tile; a bit slower than the server's 200 ms step limit
-const MOTION_IDLE := 0
-const MOTION_WALK := 2
 const FACING_YAW := {"down": 0.0, "up": 180.0, "left": -90.0, "right": 90.0}
 
 var _client: Colyseus.Client
@@ -40,7 +38,7 @@ func _ready() -> void:
 
 
 func _join(map_id: String, ticket: String) -> void:
-	_status.text = "Connecting to %s…" % map_id
+	_status.text = "Connecting to %sâ€¦" % map_id
 	if _client == null:
 		_client = Colyseus.Client.new(Session.server_url.replace("http", "ws"))
 		_client.auth.set_token(Session.token)
@@ -60,7 +58,7 @@ func _on_message(type: Variant, data: Variant) -> void:
 	match str(type):
 		"warp":
 			# Other maps aren't built in 3D yet: say so instead of leaving town.
-			_status.text = "Path to %s — that map isn't in 3D yet." % data.get("to", "?")
+			_status.text = "Path to %s â€” that map isn't in 3D yet." % data.get("to", "?")
 		"wildEncounter":
 			_status.text = "A wild %s appeared! (battles come in Phase 3)" % data.get("species", "?")
 			_room.send_message("battleEnd")
@@ -83,7 +81,7 @@ func _sync_players() -> void:
 		seen[sid] = true
 		var rt: RemoteTrainer = _players.get(sid)
 		if rt == null:
-			rt = RemoteTrainer.new(p.get("name", "Trainer"), sid == _room.get_session_id())
+			rt = RemoteTrainer.new(p.get("name", "Trainer"), p.get("look", ""), sid == _room.get_session_id())
 			add_child(rt)
 			rt.teleport(_tile_to_world(p.x, p.y), p.facing)
 			_players[sid] = rt
@@ -131,16 +129,17 @@ class RemoteTrainer extends Node3D:
 	var _tween: Tween
 	var _walking_until := 0.0
 
-	func _init(trainer_name: String, is_me: bool) -> void:
-		# Until character creation exists, the look is picked from the name.
-		var look := "serena" if trainer_name.hash() % 2 == 0 else "calem"
-		_model = TrainerModel.create(look)
+	func _init(trainer_name: String, look_json: String, is_me: bool) -> void:
+		var look: Variant = JSON.parse_string(look_json) if look_json != "" else null
+		if not (look is Dictionary):
+			look = TrainerModel.default_look("f1" if trainer_name.hash() % 2 == 0 else "f2")
+		_model = TrainerModel.from_look(look)
 		if _model:
 			add_child(_model)
-			_model.play_motion(MOTION_IDLE)
+			_model.play_motion(TrainerModel.MOTION_STAND)
 		var tag := Label3D.new()
 		tag.text = trainer_name
-		tag.position.y = 70
+		tag.position.y = 52
 		tag.font_size = 48
 		tag.outline_size = 12
 		tag.pixel_size = 0.3 # the game's units are large (a tile is 18), so scale text up to match
@@ -162,13 +161,13 @@ class RemoteTrainer extends Node3D:
 		_tween = create_tween()
 		_tween.tween_property(self, "position", pos, STEP_TIME)
 		_walking_until = Time.get_ticks_msec() / 1000.0 + STEP_TIME + 0.08
-		if _model and _model.player.current_animation != "mot%02d" % MOTION_WALK:
-			_model.play_motion(MOTION_WALK)
+		if _model and _model.player.current_animation != "mot%02d" % TrainerModel.MOTION_WALK:
+			_model.play_motion(TrainerModel.MOTION_WALK)
 
 	func _face(facing: String) -> void:
 		rotation_degrees.y = FACING_YAW.get(facing, 0.0)
 
 	func _process(_delta: float) -> void:
 		if _model and Time.get_ticks_msec() / 1000.0 > _walking_until \
-				and _model.player.current_animation != "mot%02d" % MOTION_IDLE:
-			_model.play_motion(MOTION_IDLE)
+				and _model.player.current_animation != "mot%02d" % TrainerModel.MOTION_STAND:
+			_model.play_motion(TrainerModel.MOTION_STAND)

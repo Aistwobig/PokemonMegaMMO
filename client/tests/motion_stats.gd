@@ -1,11 +1,11 @@
 extends Node
 ## Dev tool: measures each motion's foot swing and loop length, to find idle/walk/run.
-##   godot --headless --path client res://tests/motion_stats.tscn -- serena
+##   godot --headless --path client res://tests/motion_stats.tscn -- f1
 
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
-	var t := TrainerModel.create(args[0] if args.size() > 0 else "serena")
+	var t := TrainerModel.from_look(TrainerModel.default_look(args[0] if args.size() > 0 else "f1"))
 	add_child(t)
 	var skel := t.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
 	var lfoot := skel.find_bone("LFoot")

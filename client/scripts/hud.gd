@@ -1,12 +1,13 @@
 extends CanvasLayer
-## Minimal in-world HUD: who you're logged in as. Esc logs out.
+## Minimal in-world HUD: who you're logged in as. C changes your look, Esc logs out.
 
 const LOGIN_SCENE := "res://scenes/login.tscn"
+const CREATOR_SCENE := "res://scenes/character_creator.tscn"
 
 
 func _ready() -> void:
 	var who: String = Session.trainer.get("name", "not logged in")
-	$Label.text = "%s  ·  Esc to log out" % who
+	$Label.text = "%s  ·  C change look  ·  Esc log out" % who
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -14,3 +15,5 @@ func _unhandled_input(event: InputEvent) -> void:
 		set_process_unhandled_input(false)
 		await Session.logout()
 		get_tree().change_scene_to_file(LOGIN_SCENE)
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_C:
+		get_tree().change_scene_to_file(CREATOR_SCENE)

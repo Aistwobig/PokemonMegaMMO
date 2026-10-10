@@ -6,7 +6,7 @@ const SAVE_PATH := "user://session.cfg"
 
 var server_url := "http://localhost:2567"
 var token := ""
-var trainer := {} # { name, mapId, x, y, facing }
+var trainer := {} # { name, mapId, x, y, facing, appearance, introDone }
 
 
 func _ready() -> void:
@@ -43,6 +43,41 @@ func resume() -> bool:
 	if res.code == 401:
 		_set_session("", {}, false) # expired or logged out elsewhere; keep it if the server was just down
 	return false
+
+
+## Saves the look from character creation. Returns "" or an error message.
+func save_appearance(look: Dictionary) -> String:
+	var res := await _request(HTTPClient.METHOD_PUT, "/trainer/appearance", {look = look})
+	if res.code == 200:
+		trainer = res.data.trainer
+		return ""
+	if res.code == 0:
+		return "Can't reach the server at %s. Is it running?" % server_url
+	return res.data.get("error", "Something went wrong (error %d)." % res.code)
+
+
+func has_appearance() -> bool:
+	return trainer.get("appearance") is Dictionary
+
+
+func intro_done() -> bool:
+	return trainer.get("introDone", false) == true
+
+
+## Tells the server the intro was seen, so it doesn't play again. Returns "" or an error message.
+func complete_intro() -> String:
+	var res := await _request(HTTPClient.METHOD_POST, "/trainer/intro")
+	if res.code == 200:
+		trainer = res.data.trainer
+		return ""
+	if res.code == 0:
+		return "Can't reach the server at %s. Is it running?" % server_url
+	return res.data.get("error", "Something went wrong (error %d)." % res.code)
+
+
+## "f1" (girl) or "f2" (boy), for text that differs by gender.
+func gender() -> String:
+	return trainer.get("appearance").get("gender", "f2") if has_appearance() else "f2"
 
 
 func logout() -> void:

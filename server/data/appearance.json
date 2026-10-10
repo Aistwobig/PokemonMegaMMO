@@ -1,0 +1,743 @@
+{
+ "f1": {
+  "label": "girl",
+  "parts": {
+   "f1_bag01": {
+    "category": "bag",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d01b03",
+     "d01b04",
+     "d01b05",
+     "d02s01",
+     "d02s03",
+     "d03f01",
+     "d03f02",
+     "d04c01",
+     "d04c02",
+     "d04c03",
+     "d04el01",
+     "d04el02",
+     "d06et02",
+     "d06et03"
+    ]
+   },
+   "f1_bngl01": {
+    "category": "bangle",
+    "colors": [
+     "d01"
+    ]
+   },
+   "f1_body_coat01": {
+    "category": "body",
+    "colors": [
+     "d01f01",
+     "d02c01",
+     "d03c01",
+     "d03c02"
+    ]
+   },
+   "f1_body_costume02": {
+    "category": "body",
+    "colors": [
+     "d01spe01"
+    ]
+   },
+   "f1_body_onepiece01": {
+    "category": "body",
+    "colors": [
+     "d01f01",
+     "d02f01",
+     "d03b01"
+    ]
+   },
+   "f1_body_onepiece04": {
+    "category": "body",
+    "colors": [
+     "d01c01",
+     "d01c02"
+    ]
+   },
+   "f1_btms_askirt": {
+    "category": "btms",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d01b03",
+     "d03f01",
+     "d03f02"
+    ]
+   },
+   "f1_btms_lpants": {
+    "category": "btms",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d01b03",
+     "d01b04",
+     "d01b05",
+     "d01b06",
+     "d01b07",
+     "d02b01",
+     "d03s01",
+     "d03s02",
+     "d03s03",
+     "d03s04",
+     "d04c01",
+     "d04c02",
+     "d04c03"
+    ]
+   },
+   "f1_btms_pajama": {
+    "category": "btms",
+    "colors": [
+     "d01f01"
+    ]
+   },
+   "f1_btms_pskirt": {
+    "category": "btms",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d01b03",
+     "d01b04",
+     "d02f01",
+     "d02f02",
+     "d02f03",
+     "d04c01",
+     "d04c02"
+    ]
+   },
+   "f1_btms_tskirt": {
+    "category": "btms",
+    "colors": [
+     "d01f01",
+     "d01f02",
+     "d01f03",
+     "d03el01",
+     "d03el02"
+    ]
+   },
+   "f1_btms_tspants": {
+    "category": "btms",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d01b03",
+     "d01b04",
+     "d01b05",
+     "d01s01",
+     "d01s02",
+     "d02s01",
+     "d05et01",
+     "d05et02"
+    ]
+   },
+   "f1_face00": {
+    "category": "face",
+    "colors": []
+   },
+   "f1_face01": {
+    "category": "face",
+    "colors": []
+   },
+   "f1_face02": {
+    "category": "face",
+    "colors": []
+   },
+   "f1_hair_bob": {
+    "category": "hair",
+    "colors": []
+   },
+   "f1_hair_bob_mae": {
+    "category": "hair",
+    "colors": []
+   },
+   "f1_hair_long": {
+    "category": "hair",
+    "colors": []
+   },
+   "f1_hair_long_mae": {
+    "category": "hair",
+    "colors": []
+   },
+   "f1_hair_midi": {
+    "category": "hair",
+    "colors": []
+   },
+   "f1_hair_midi_mae": {
+    "category": "hair",
+    "colors": []
+   },
+   "f1_hair_pony": {
+    "category": "hair",
+    "colors": []
+   },
+   "f1_hair_pony_mae": {
+    "category": "hair",
+    "colors": []
+   },
+   "f1_hair_short": {
+    "category": "hair",
+    "colors": []
+   },
+   "f1_hair_short_mae": {
+    "category": "hair",
+    "colors": []
+   },
+   "f1_hair_twin": {
+    "category": "hair",
+    "colors": []
+   },
+   "f1_hair_twin_mae": {
+    "category": "hair",
+    "colors": []
+   },
+   "f1_hat_can": {
+    "category": "hat",
+    "colors": [
+     "d00",
+     "d01b01",
+     "d01b02",
+     "d01b03",
+     "d01b04",
+     "d01b05",
+     "d01f01",
+     "d01f02",
+     "d01f03",
+     "d01f04",
+     "d02s01",
+     "d02s03"
+    ]
+   },
+   "f1_hat_cap": {
+    "category": "hat",
+    "colors": [
+     "d00",
+     "d01s01",
+     "d01s02",
+     "d01s03",
+     "d02s01",
+     "d02s02"
+    ]
+   },
+   "f1_hat_cas": {
+    "category": "hat",
+    "colors": [
+     "d00",
+     "d01b01",
+     "d01b02",
+     "d01b03",
+     "d02et01",
+     "d02et02"
+    ]
+   },
+   "f1_hat_hat": {
+    "category": "hat",
+    "colors": [
+     "d00",
+     "d01c01",
+     "d01c02",
+     "d01c03",
+     "d02b01",
+     "d02b02",
+     "d02el01"
+    ]
+   },
+   "f1_point_badge": {
+    "category": "point",
+    "colors": [
+     "d01p01",
+     "d01p02",
+     "d01p03",
+     "d01p04",
+     "d01p05"
+    ]
+   },
+   "f1_point_flower": {
+    "category": "point",
+    "colors": [
+     "d01p01",
+     "d01p02",
+     "d01p03",
+     "d01p04"
+    ]
+   },
+   "f1_point_glasses": {
+    "category": "point",
+    "colors": [
+     "d01p01",
+     "d01p02",
+     "d01p03",
+     "d01p04"
+    ]
+   },
+   "f1_point_metal": {
+    "category": "point",
+    "colors": [
+     "d01p01",
+     "d01p02",
+     "d01p03"
+    ]
+   },
+   "f1_point_ribbon": {
+    "category": "point",
+    "colors": [
+     "d01p01",
+     "d01p02",
+     "d01p03",
+     "d01p04",
+     "d01p05"
+    ]
+   },
+   "f1_point_wing": {
+    "category": "point",
+    "colors": [
+     "d01p01",
+     "d01p02",
+     "d01p03"
+    ]
+   },
+   "f1_shoes00": {
+    "category": "shoes",
+    "colors": []
+   },
+   "f1_shoes_lboots": {
+    "category": "shoes",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d01b03",
+     "d01b04",
+     "d01b05",
+     "d01b06",
+     "d03c01",
+     "d03c02",
+     "d04c01"
+    ]
+   },
+   "f1_shoes_pajama": {
+    "category": "shoes",
+    "colors": [
+     "d01p01",
+     "d02f01"
+    ]
+   },
+   "f1_shoes_sboots": {
+    "category": "shoes",
+    "colors": [
+     "d01s01",
+     "d01s02",
+     "d01s03",
+     "d01s04"
+    ]
+   },
+   "f1_shoes_shoes": {
+    "category": "shoes",
+    "colors": [
+     "d04c01",
+     "d04c02",
+     "d05c01",
+     "d05c02",
+     "d05c03"
+    ]
+   },
+   "f1_shoes_shoes_socks": {
+    "category": "shoes",
+    "colors": [
+     "d01c01",
+     "d01c02",
+     "d01el01",
+     "d01el02",
+     "d01f01",
+     "d01f02"
+    ]
+   },
+   "f1_socks_tights": {
+    "category": "socks",
+    "colors": [
+     "d01p01",
+     "d02p01",
+     "d02p02",
+     "d02p03",
+     "d02p04",
+     "d02p05",
+     "d02p06",
+     "kd01p01",
+     "kd01p02",
+     "kd01p03",
+     "kd01p04",
+     "kd01p05",
+     "kd01p06",
+     "kd01p07",
+     "none",
+     "od01p01",
+     "od01p02",
+     "od01p04",
+     "od01p05",
+     "od01p06",
+     "od01p07",
+     "od01p08",
+     "od01p09",
+     "od01p10",
+     "od01p11",
+     "od01p12",
+     "od01p13"
+    ]
+   },
+   "f1_tops_cami": {
+    "category": "tops",
+    "colors": [
+     "d01f01",
+     "d01f02",
+     "d01f03",
+     "d02b01"
+    ]
+   },
+   "f1_tops_noslee": {
+    "category": "tops",
+    "colors": [
+     "d01s01",
+     "d01s02",
+     "d01s03",
+     "d02s01",
+     "d02s02",
+     "d04b01",
+     "d04b02"
+    ]
+   },
+   "f1_tops_pajama": {
+    "category": "tops",
+    "colors": [
+     "d01f01"
+    ]
+   },
+   "f1_tops_parka": {
+    "category": "tops",
+    "colors": [
+     "d01s01",
+     "d01s02",
+     "d01s03",
+     "d01s04"
+    ]
+   },
+   "f1_tops_puffslee": {
+    "category": "tops",
+    "colors": [
+     "d01c01",
+     "d01c02"
+    ]
+   },
+   "f1_tops_ribbon": {
+    "category": "tops",
+    "colors": [
+     "d01b01",
+     "d02f01",
+     "d02f02",
+     "d05et01"
+    ]
+   },
+   "f1_tops_shirt": {
+    "category": "tops",
+    "colors": [
+     "d01et01",
+     "d01et02"
+    ]
+   },
+   "f1_tops_stole": {
+    "category": "tops",
+    "colors": [
+     "d02f01",
+     "d02f02",
+     "d02f03",
+     "d03f01"
+    ]
+   },
+   "f1_tops_tievest": {
+    "category": "tops",
+    "colors": [
+     "d01c01",
+     "d01c02",
+     "d01c03"
+    ]
+   },
+   "f1_tops_tshirt": {
+    "category": "tops",
+    "colors": [
+     "d01s01",
+     "d01s02",
+     "d01s03",
+     "d01s04"
+    ]
+   }
+  }
+ },
+ "f2": {
+  "label": "boy",
+  "parts": {
+   "f2_bag01": {
+    "category": "bag",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d01b03",
+     "d01co01",
+     "d01co02",
+     "d04c01",
+     "d04c02"
+    ]
+   },
+   "f2_bngl01": {
+    "category": "bangle",
+    "colors": [
+     "d01"
+    ]
+   },
+   "f2_btms_lpants": {
+    "category": "btms",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d02c01",
+     "d02c02",
+     "d03b01",
+     "d04b01",
+     "d05c01"
+    ]
+   },
+   "f2_btms_pajama": {
+    "category": "btms",
+    "colors": [
+     "d01b01"
+    ]
+   },
+   "f2_btms_scargo": {
+    "category": "btms",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d01co01"
+    ]
+   },
+   "f2_btms_skinny": {
+    "category": "btms",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d01b03",
+     "d01b04",
+     "d02co01",
+     "d02co02"
+    ]
+   },
+   "f2_face00": {
+    "category": "face",
+    "colors": []
+   },
+   "f2_face01": {
+    "category": "face",
+    "colors": []
+   },
+   "f2_face02": {
+    "category": "face",
+    "colors": []
+   },
+   "f2_hair_midi": {
+    "category": "hair",
+    "colors": []
+   },
+   "f2_hair_perm": {
+    "category": "hair",
+    "colors": []
+   },
+   "f2_hair_short": {
+    "category": "hair",
+    "colors": []
+   },
+   "f2_hair_vshort": {
+    "category": "hair",
+    "colors": []
+   },
+   "f2_hat_cap": {
+    "category": "hat",
+    "colors": [
+     "d00",
+     "d01b01",
+     "d01b02",
+     "d01co01",
+     "d01co02"
+    ]
+   },
+   "f2_hat_hat": {
+    "category": "hat",
+    "colors": [
+     "d00",
+     "d01c01",
+     "d01c02",
+     "d01c03",
+     "d03co01"
+    ]
+   },
+   "f2_hat_hun": {
+    "category": "hat",
+    "colors": [
+     "d00",
+     "d01b01",
+     "d01b02",
+     "d01b03",
+     "d01b04"
+    ]
+   },
+   "f2_hat_knit": {
+    "category": "hat",
+    "colors": [
+     "d00",
+     "d01b01",
+     "d01b02",
+     "d01b03",
+     "d01co01",
+     "d02co01",
+     "d02co02"
+    ]
+   },
+   "f2_hat_poke": {
+    "category": "hat",
+    "colors": [
+     "d01spe01"
+    ]
+   },
+   "f2_leg_sboots": {
+    "category": "leg",
+    "colors": []
+   },
+   "f2_leg_shoes": {
+    "category": "leg",
+    "colors": []
+   },
+   "f2_point_badge": {
+    "category": "point",
+    "colors": [
+     "d01p01",
+     "d01p02",
+     "d01p03",
+     "d01p04",
+     "d01p05"
+    ]
+   },
+   "f2_point_glasses": {
+    "category": "point",
+    "colors": [
+     "d01p01",
+     "d01p02",
+     "d01p03",
+     "d01p04"
+    ]
+   },
+   "f2_point_wing": {
+    "category": "point",
+    "colors": [
+     "d01p01",
+     "d01p02",
+     "d01p03"
+    ]
+   },
+   "f2_shoes00": {
+    "category": "shoes",
+    "colors": []
+   },
+   "f2_shoes_pajama": {
+    "category": "shoes",
+    "colors": [
+     "d01p01",
+     "d02b01"
+    ]
+   },
+   "f2_shoes_sboots": {
+    "category": "shoes",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d01b03"
+    ]
+   },
+   "f2_shoes_shoes": {
+    "category": "shoes",
+    "colors": [
+     "d01c01",
+     "d01c02",
+     "d03b01",
+     "d03b02",
+     "d03co01",
+     "d03co02",
+     "d03co03"
+    ]
+   },
+   "f2_tops_jersey": {
+    "category": "tops",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d01b03",
+     "d01b04",
+     "d01b05",
+     "d01b06"
+    ]
+   },
+   "f2_tops_jumper": {
+    "category": "tops",
+    "colors": [
+     "d01c01",
+     "d02b01",
+     "d02co01"
+    ]
+   },
+   "f2_tops_pajama": {
+    "category": "tops",
+    "colors": [
+     "d01b01"
+    ]
+   },
+   "f2_tops_shirt": {
+    "category": "tops",
+    "colors": [
+     "d01b01",
+     "d01co01",
+     "d01co02",
+     "d01co03",
+     "d02c01",
+     "d02c02",
+     "d03b01",
+     "d03b02"
+    ]
+   },
+   "f2_tops_sweat": {
+    "category": "tops",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d01b03"
+    ]
+   },
+   "f2_tops_tshirt": {
+    "category": "tops",
+    "colors": [
+     "d01b01",
+     "d01b02",
+     "d01co01",
+     "d01co02",
+     "d02co01",
+     "d02co02",
+     "d02co03",
+     "d02co04",
+     "d02co05",
+     "d03co01",
+     "d03co02",
+     "d03co03",
+     "d04spe01",
+     "d05spe01"
+    ]
+   }
+  }
+ }
+}

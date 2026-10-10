@@ -1,10 +1,16 @@
-// BchTool: converts Pokémon X BCH files to DAE + PNG using SPICA (public domain).
+ // BchTool: converts Pokémon X BCH files to DAE + PNG using SPICA (public domain).
 //
 //   BchTool info   <file.bch>...                    list models, materials, textures, animations
 //   BchTool export <outDir> <name> <file.bch>... [--motions <motionpack>]
 //       merge the files and write <name>.dae + textures. With --motions, also write each motion of
 //       a GF motion pack (X/Y overworld characters, the 2nd file of an "MM" pack) as
 //       <name>_motNN.dae: the skeleton plus one animation, no meshes.
+//
+//   BchTool parts <outDir> <base.bch> <part.bch>... [--textures <file.bch>...] [--motions <pack>]
+//       character customization: every part is merged into the base skeleton once (so all share
+//       one skeleton), then written as its own <partName>.dae. Also writes base.dae (skeleton
+//       only), every color variant PNG of the parts, the motions, and manifest.json listing each
+//       part's category, materials and color variants.
 //
 // For characters, pass the body ("base") first and then each clothing part: every part's meshes
 // are moved into the first model, so the result is one model with one skeleton.
@@ -30,7 +36,8 @@ static class Program
         {
             if (args.Length >= 2 && args[0] == "info") return Info(args.Skip(1));
             if (args.Length >= 4 && args[0] == "export") return Export(args[1], args[2], args.Skip(3).ToList());
-            Console.Error.WriteLine("usage: BchTool info <file.bch>... | export <outDir> <name> <file.bch>...");
+            if (args.Length >= 3 && args[0] == "parts") return Parts(args[1], args.Skip(2).ToList());
+            Console.Error.WriteLine("usage: BchTool info <file.bch>... | export <outDir> <name> <file.bch>... | parts <outDir> <base.bch> <part.bch>...");
             return 2;
         }
         catch (Exception e)
@@ -104,6 +111,115 @@ static class Program
 
         if (motions != null) ExportMotions(scene, outDir, name, motions);
         return 0;
+    }
+
+    static int Parts(string outDir, List<string> args)
+    {
+        string motions = TakeOption(args, "--motions", 1).FirstOrDefault();
+        List<string> textureFiles = TakeOption(args, "--textures", int.MaxValue);
+        H3D scene = H3D.Open(File.ReadAllBytes(args[0]));
+        H3DModel body = scene.Models[0];
+        body.ClearMeshes(); // the body only holds a placeholder cube
+
+        var partMeshes = new List<KeyValuePair<string, List<H3DMesh>>>();
+        foreach (string file in args.Skip(1))
+        {
+            H3D partScene = H3D.Open(File.ReadAllBytes(file));
+            foreach (H3DModel part in partScene.Models.ToList())
+            {
+                int before = body.Meshes.Count;
+                MergeInto(body, part);
+                partMeshes.Add(new KeyValuePair<string, List<H3DMesh>>(part.Name, body.Meshes.Skip(before).ToList()));
+            }
+        }
+        foreach (string file in textureFiles)
+            foreach (var t in H3D.Open(File.ReadAllBytes(file)).Textures)
+                if (!scene.Textures.Contains(t.Name)) scene.Textures.Add(t);
+        SortSkeletonDepthFirst(body);
+        FixProjectionDummies(body);
+
+        Directory.CreateDirectory(outDir);
+        var manifest = new List<object>();
+        var neededTextures = new HashSet<string>();
+        foreach (var part in partMeshes)
+        {
+            body.ClearMeshes();
+            body.AddMeshes(part.Value);
+            new DAE(scene, 0).Save(Path.Combine(outDir, part.Key + ".dae"));
+
+            var materials = part.Value.Select(m => body.Materials[m.MaterialIndex]).Distinct().Select(mat =>
+            {
+                string stem = VariantStem(mat.Texture0Name);
+                string[] variants = ColorVariants(stem, scene);
+                foreach (string v in variants) neededTextures.Add(stem + v);
+                if (!string.IsNullOrEmpty(mat.Texture0Name)) neededTextures.Add(mat.Texture0Name);
+                return new Dictionary<string, object>
+                {
+                    ["name"] = mat.Name, ["texture"] = mat.Texture0Name ?? "", ["stem"] = stem ?? "", ["variants"] = variants,
+                };
+            }).ToList();
+            manifest.Add(new Dictionary<string, object> { ["name"] = part.Key, ["category"] = Category(part.Key), ["materials"] = materials });
+        }
+
+        body.ClearMeshes();
+        new DAE(scene, 0).Save(Path.Combine(outDir, "base.dae"));
+        // "_m" textures are skin masks: X/Y fills the masked areas with the chosen skin tone.
+        foreach (string n in neededTextures.ToList()) neededTextures.Add(n + "_m");
+        int written = 0;
+        foreach (var t in scene.Textures)
+        {
+            if (!neededTextures.Contains(t.Name)) continue;
+            t.ToBitmap().Save(Path.Combine(outDir, t.Name + ".png"), System.Drawing.Imaging.ImageFormat.Png);
+            written++;
+        }
+        var doc = new Dictionary<string, object> { ["skeleton"] = body.Name, ["bones"] = body.Skeleton.Count, ["parts"] = manifest };
+        File.WriteAllText(Path.Combine(outDir, "manifest.json"), new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(doc));
+        Console.WriteLine($"{partMeshes.Count} parts, {body.Skeleton.Count} bones, {written} textures → {outDir}");
+
+        if (motions != null) ExportMotions(scene, outDir, "motion", motions);
+        return 0;
+    }
+
+    /// Removes "--name value..." from args and returns the values. count = how many values to take
+    /// (int.MaxValue: everything up to the next "--option").
+    static List<string> TakeOption(List<string> args, string name, int count)
+    {
+        int i = args.IndexOf(name);
+        if (i < 0) return new List<string>();
+        var values = args.Skip(i + 1).TakeWhile(a => !a.StartsWith("--")).Take(count).ToList();
+        args.RemoveRange(i, 1 + values.Count);
+        return values;
+    }
+
+    /// "f2_tops_jersey" → "tops", "f2_face01" → "face", "f2_bngl01" → "bangle".
+    /// Part names are <set>_<category>[NN][_<style>].
+    static string Category(string partName)
+    {
+        string[] bits = partName.Split('_');
+        string cat = bits.Length > 1 ? bits[1].TrimEnd("0123456789".ToCharArray()) : partName;
+        return cat == "bngl" ? "bangle" : cat;
+    }
+
+    /// The part of a texture name shared by its color variants, or null if it has none.
+    /// Clothing: "f2_topsjer_d01b01" → "f2_topsjer_" (siblings "…_d01b02", "…_d02co01").
+    /// Girls' legs: "f1_socks_od01p01" → "f1_socks_" — the sock styles ("none", "kd01p01",
+    /// "od01p03"...) are the variants. Faces and hair have none.
+    static string VariantStem(string texture)
+    {
+        if (string.IsNullOrEmpty(texture)) return null;
+        int socks = texture.IndexOf("_socks_");
+        if (socks >= 0) return texture.Substring(0, socks + "_socks_".Length);
+        var m = System.Text.RegularExpressions.Regex.Match(texture, @"^(.*_)d\d\d[a-z]*\d*$");
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    /// Variant codes for a stem: every texture starting with it, minus "_m" skin masks.
+    static string[] ColorVariants(string stem, H3D scene)
+    {
+        if (stem == null) return new string[0];
+        return scene.Textures.Select(t => t.Name)
+            .Where(n => n.StartsWith(stem) && !n.EndsWith("_m") && n.Length > stem.Length)
+            .Select(n => n.Substring(stem.Length)).OrderBy(n => n).ToArray();
     }
 
     static void ExportMotions(H3D scene, string outDir, string name, string motionPack)

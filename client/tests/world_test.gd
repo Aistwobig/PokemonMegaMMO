@@ -11,4 +11,11 @@ func _ready() -> void:
 		push_error("register failed: " + err)
 		get_tree().quit(1)
 		return
+	var look := TrainerModel.default_look("f1")
+	look.parts.hat = {"part": "f1_hat_cap", "color": "d01s01"}
+	look.parts.socks = {"part": "f1_socks_tights", "color": "kd01p03"}
+	look.hairColor = 4
+	err = await Session.save_appearance(look)
+	if err != "":
+		push_error("saving the look failed: " + err)
 	get_tree().change_scene_to_file.call_deferred("res://scenes/world.tscn")

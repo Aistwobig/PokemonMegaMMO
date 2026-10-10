@@ -1,6 +1,7 @@
 import { randomInt } from "node:crypto";
 import express, { type Request, type Response } from "express";
 import { pool, transaction } from "../db/pool.ts";
+import { LookError, validateLook } from "../world/appearance.ts";
 import type { GameMap } from "../world/maps.ts";
 import { DUMMY_HASH, hashPassword, verifyPassword } from "./passwords.ts";
 import { RateLimiter } from "./rateLimit.ts";
@@ -11,6 +12,8 @@ import { createSession, deleteSession, findSession, type SessionTrainer } from "
 //   POST /auth/login     { username, password }               → 200 { token, trainer }
 //   POST /auth/logout    Authorization: Bearer <token>        → 204
 //   GET  /auth/me        Authorization: Bearer <token>        → 200 { trainer }
+//   PUT  /trainer/appearance  { look }  (Bearer)               → 200 { trainer }   (character creation)
+//   POST /trainer/intro                 (Bearer)               → 200 { trainer }   (intro cutscene seen)
 
 const START_MAP = "vaniville";
 const USERNAME = /^[A-Za-z0-9_]{3,16}$/;
@@ -32,7 +35,7 @@ export function authRoutes(app: express.Application, maps: Map<string, GameMap>)
   const startMap = maps.get(START_MAP);
   if (!startMap) throw new Error(`start map "${START_MAP}" not loaded`);
 
-  app.use("/auth", express.json({ limit: "4kb" }));
+  app.use(["/auth", "/trainer"], express.json({ limit: "4kb" }));
 
   app.post("/auth/register", handle(async (req, res) => {
     const ip = `ip:${req.ip}`;
@@ -92,11 +95,37 @@ export function authRoutes(app: express.Application, maps: Map<string, GameMap>)
     if (!session) throw new HttpError(401, "Not logged in.");
     res.json({ trainer: publicTrainer(session) });
   }));
+
+  app.put("/trainer/appearance", handle(async (req, res) => {
+    const session = await findSession(bearer(req));
+    if (!session) throw new HttpError(401, "Not logged in.");
+    let look;
+    try {
+      look = validateLook(req.body?.look);
+    } catch (err) {
+      if (err instanceof LookError) throw new HttpError(400, err.message);
+      throw err;
+    }
+    await pool.query("UPDATE trainers SET appearance = $2 WHERE id = $1", [session.trainerId, look]);
+    res.json({ trainer: publicTrainer({ ...session, appearance: look }) });
+  }));
+
+  // The intro (Sycamore's welcome, waking up at home) plays once, after character creation.
+  app.post("/trainer/intro", handle(async (req, res) => {
+    const session = await findSession(bearer(req));
+    if (!session) throw new HttpError(401, "Not logged in.");
+    if (!session.appearance) throw new HttpError(400, "Create your character first.");
+    await pool.query(`UPDATE trainers SET flags = flags || '{"intro": true}' WHERE id = $1`, [session.trainerId]);
+    res.json({ trainer: publicTrainer({ ...session, flags: { ...session.flags, intro: true } }) });
+  }));
 }
 
 /** What the client gets to see about its own trainer. */
 function publicTrainer(t: SessionTrainer) {
-  return { name: t.name, mapId: t.mapId, x: t.x, y: t.y, facing: t.facing };
+  return {
+    name: t.name, mapId: t.mapId, x: t.x, y: t.y, facing: t.facing, appearance: t.appearance,
+    introDone: t.flags.intro === true,
+  };
 }
 
 function handle(fn: (req: Request, res: Response) => Promise<void>) {
