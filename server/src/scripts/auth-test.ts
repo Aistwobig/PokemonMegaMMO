@@ -1,0 +1,127 @@
+// End-to-end check of accounts and room login against a running server + database.
+//   npm run dev          (in another terminal)
+//   npm run test:auth
+// Creates throwaway accounts with a random suffix, so it can run repeatedly.
+
+import { Client, type Room } from "@colyseus/sdk";
+import { config } from "../config.ts";
+import { pool } from "../db/pool.ts";
+
+const http = `http://localhost:${config.port}`;
+const ws = `ws://localhost:${config.port}`;
+const id = Math.random().toString(36).slice(2, 7);
+const user = `test_${id}`;
+const password = "correct horse battery";
+let failures = 0;
+
+function check(name: string, ok: boolean, detail = "") {
+  console.log(`${ok ? "  ok  " : "  FAIL"} ${name}${ok || !detail ? "" : ` — ${detail}`}`);
+  if (!ok) failures++;
+}
+
+async function call(method: string, path: string, body?: object, token?: string) {
+  const res = await fetch(http + path, {
+    method,
+    headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await res.text();
+  return { status: res.status, data: text ? JSON.parse(text) : {} };
+}
+
+async function join(token: string | undefined, mapId: string, options: object = {}): Promise<Room | string> {
+  const client = new Client(ws);
+  if (token) client.auth.token = token;
+  try {
+    return await client.joinOrCreate(mapId, options);
+  } catch (err: any) {
+    return `${err.code ?? "?"} ${err.message}`;
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+console.log("register");
+let r = await call("POST", "/auth/register", { username: "ab", password, trainerName: "X" });
+check("rejects short username", r.status === 400, JSON.stringify(r));
+r = await call("POST", "/auth/register", { username: user, password: "short", trainerName: "X" });
+check("rejects short password", r.status === 400, JSON.stringify(r));
+r = await call("POST", "/auth/register", { username: user, password, trainerName: "<script>" });
+check("rejects odd trainer names", r.status === 400, JSON.stringify(r));
+r = await call("POST", "/auth/register", { username: user, password, trainerName: `Ash${id}` });
+check("creates account", r.status === 201 && typeof r.data.token === "string", JSON.stringify(r));
+check("trainer starts in vaniville", r.data.trainer?.mapId === "vaniville", JSON.stringify(r.data));
+const firstToken: string = r.data.token;
+r = await call("POST", "/auth/register", { username: user.toUpperCase(), password, trainerName: `Other${id}` });
+check("username taken (any case)", r.status === 409, JSON.stringify(r));
+r = await call("POST", "/auth/register", { username: `${user}b`, password, trainerName: `ash${id}` });
+check("trainer name taken (any case)", r.status === 409, JSON.stringify(r));
+
+console.log("login");
+r = await call("POST", "/auth/login", { username: user, password: "wrong password!" });
+check("wrong password → 401", r.status === 401, JSON.stringify(r));
+r = await call("POST", "/auth/login", { username: `nobody_${id}`, password });
+check("unknown user → same 401", r.status === 401 && r.data.error === "Wrong username or password.", JSON.stringify(r));
+r = await call("POST", "/auth/login", { username: user.toUpperCase(), password });
+check("login works (any case)", r.status === 200 && typeof r.data.token === "string", JSON.stringify(r));
+const token: string = r.data.token;
+r = await call("GET", "/auth/me", undefined, token);
+check("/auth/me returns the trainer", r.status === 200 && r.data.trainer?.name === `Ash${id}`, JSON.stringify(r));
+const stored = await pool.query("SELECT password_hash FROM accounts WHERE username = $1", [user]);
+check("password stored hashed", stored.rows[0]?.password_hash.startsWith("scrypt$") && !stored.rows[0].password_hash.includes(password));
+
+console.log("rooms");
+let room = await join(undefined, "vaniville");
+check("no token → refused", typeof room === "string", String(room));
+room = await join("not-a-real-token-at-all-xxxx", "vaniville");
+check("bad token → refused", typeof room === "string", String(room));
+room = await join(token, "route2");
+check("wrong map → refused", typeof room === "string" && room.includes("vaniville"), String(room));
+room = await join(token, "route2", { ticket: "made-up-ticket" });
+check("fake warp ticket → refused", typeof room === "string", String(room));
+const first = await join(token, "vaniville");
+check("own map → joined", typeof first !== "string", String(first));
+
+if (typeof first !== "string") {
+  await sleep(300);
+  const me = first.state.players.get(first.sessionId);
+  check("name comes from the database", me?.name === `Ash${id}`, JSON.stringify(me));
+
+  let kicked: number | undefined;
+  first.onLeave((code) => (kicked = code));
+  const second = await join(firstToken, "vaniville"); // same trainer, older token
+  await sleep(500);
+  check("second login kicks the first (4001)", kicked === 4001, `close code ${kicked}`);
+
+  if (typeof second !== "string") {
+    // Walk up until the warp to route1, then check the destination was saved.
+    let warp: { to: string; ticket: string } | undefined;
+    second.onMessage("warp", (m) => (warp = m));
+    second.onMessage("wildEncounter", () => {});
+    for (let i = 0; i < 15 && !warp; i++) {
+      second.send("move", "up");
+      await sleep(250);
+    }
+    check("warp received", !!warp, "walked 15 steps up without a warp");
+    if (warp) {
+      const saved = await pool.query("SELECT t.map_id FROM trainers t JOIN accounts a ON a.id = t.account_id WHERE a.username = $1", [user]);
+      check("warp destination saved before arriving", saved.rows[0]?.map_id === warp.to, JSON.stringify(saved.rows[0]));
+      await second.leave();
+      const other = await join(token, warp.to, { ticket: warp.ticket });
+      check("ticket works for its owner", typeof other !== "string", String(other));
+      if (typeof other !== "string") await other.leave();
+      const reuse = await join(token, "vaniville", { ticket: warp.ticket });
+      check("used ticket can't return you", typeof reuse === "string", String(reuse));
+    }
+  }
+}
+
+console.log("logout");
+r = await call("POST", "/auth/logout", undefined, token);
+check("logout → 204", r.status === 204, JSON.stringify(r));
+r = await call("GET", "/auth/me", undefined, token);
+check("token dead after logout", r.status === 401, JSON.stringify(r));
+
+console.log(failures ? `\n${failures} check(s) failed` : "\nall checks passed");
+await pool.end();
+process.exit(failures ? 1 : 0);

@@ -1,0 +1,36 @@
+{
+  "name": "pokemon-mega-mmo-server",
+  "version": "0.1.0",
+  "description": "Authoritative game server: Colyseus rooms, Showdown battles, Postgres",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "tsx src/scripts/migrate.ts",
+    "battle:demo": "tsx src/scripts/battle-demo.ts",
+    "bot": "tsx src/scripts/bot.ts",
+    "test:auth": "tsx src/scripts/auth-test.ts"
+  },
+  "license": "UNLICENSED",
+  "type": "module",
+  "dependencies": {
+    "@colyseus/schema": "^5.0.36",
+    "colyseus": "^0.18.9",
+    "dotenv": "^18.0.7",
+    "express": "^5.3.0",
+    "pg": "^8.23.1",
+    "pokemon-showdown": "^0.11.11"
+  },
+  "devDependencies": {
+    "@colyseus/sdk": "^0.18.5",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "_note": "Placeholder layout and encounter table. Check species, levels and rates against the real game.",
+  "id": "route2",
+  "name": "Route 2",
+  "tiles": [
+    "#########",
+    "#.......#",
+    "#.GGGGG.#",
+    "#.GGGGG.#",
+    "#.GGGGG.#",
+    "#.......#",
+    "#.......#",
+    "#GGG.GGG#",
+    "#GGG.GGG#",
+    "#GGG.GGG#",
+    "#.......#",
+    "#.......#",
+    "#.......#",
+    "####.####"
+  ],
+  "spawn": { "x": 4, "y": 12 },
+  "warps": [{ "x": 4, "y": 13, "to": "aquacorde", "toX": 5, "toY": 1 }],
+  "encounterRate": 0.1,
+  "encounters": [
+    { "species": "fletchling", "minLevel": 2, "maxLevel": 3, "weight": 30 },
+    { "species": "bunnelby", "minLevel": 2, "maxLevel": 3, "weight": 30 },
+    { "species": "scatterbug", "minLevel": 2, "maxLevel": 3, "weight": 25 },
+    { "species": "zigzagoon", "minLevel": 2, "maxLevel": 3, "weight": 15 }
+  ]
+}

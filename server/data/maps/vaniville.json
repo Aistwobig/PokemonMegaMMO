@@ -1,0 +1,21 @@
+{
+  "_note": "Placeholder layout. Replace with the real collision grid once the importer can read map data.",
+  "id": "vaniville",
+  "name": "Vaniville Town",
+  "tiles": [
+    "#####.######",
+    "#..........#",
+    "#.##....##.#",
+    "#.##....##.#",
+    "#..........#",
+    "#..........#",
+    "#.##....##.#",
+    "#.##....##.#",
+    "#..........#",
+    "############"
+  ],
+  "spawn": { "x": 5, "y": 5 },
+  "warps": [{ "x": 5, "y": 0, "to": "route1", "toX": 3, "toY": 12 }],
+  "encounterRate": 0,
+  "encounters": []
+}
