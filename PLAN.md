@@ -98,8 +98,10 @@ assembles trainers at runtime from per-part DAEs (`importer/BchTool parts`); ski
 the RomFS, character creation in the middle) leads into waking up in the player's bedroom in
 Vaniville. Mom comes upstairs, then the player walks downstairs and out the front door into the
 online world. The house is a private client-side scene using the real tile grids. The server only
-records that the intro was seen (`introDone`). Next: Shauna and Serena/Calem greeting you outside,
-and decoding the zone event data (doors, stairs) instead of listing them by hand.
+records that the intro was seen (`introDone`). Outside, Shauna and the neighbor (Serena for boys,
+Calem for girls) come to the door, Rhyhorn roars and Mom sees you off (positions from zone 0's NPC
+list, lines from story text 57); then the starter is picked in Aquacorde. Next: doors and stairs
+from the zone event data instead of listing them by hand.
 
 ### Marketplace (GTL)
 

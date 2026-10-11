@@ -143,6 +143,22 @@ func _mom_heals() -> void:
 	_busy = false
 
 
+## Right after the intro, outside the front door: Shauna and the neighbor come to say hello.
+func _maybe_meet_neighbors() -> void:
+	if _busy or _room == null or not Session.intro_done() or Session.has_seen("neighbors"):
+		return
+	if str(_room.state.get("mapId", "")) != "vaniville":
+		return
+	var me: RemoteTrainer = _players.get(_room.get_session_id())
+	if me == null:
+		return
+	_busy = true
+	var scene := NeighborsScene.new(self, me)
+	add_child(scene)
+	await scene.finished
+	_busy = false
+
+
 ## The first time in Aquacorde without a Pokémon: pick a starter.
 func _maybe_choose_starter() -> void:
 	if _has_pokemon or _busy or _room == null or str(_room.state.get("mapId", "")) != "aquacorde":
@@ -207,6 +223,7 @@ func _process(_delta: float) -> void:
 	if _room == null or not _room.connected:
 		return
 	_maybe_choose_starter()
+	_maybe_meet_neighbors()
 	if _busy:
 		return
 	var dir := _held_direction() if accept_input else ""

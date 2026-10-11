@@ -15,10 +15,14 @@ import { createSession, deleteSession, findSession, type SessionTrainer } from "
 //   GET  /auth/me        Authorization: Bearer <token>        → 200 { trainer }
 //   PUT  /trainer/appearance  { look }  (Bearer)               → 200 { trainer }   (character creation)
 //   POST /trainer/intro                 (Bearer)               → 200 { trainer }   (intro cutscene seen)
+//   POST /trainer/story    { event }    (Bearer)               → 200 { trainer }   (a cutscene seen)
 //   GET  /trainer/party                 (Bearer)               → 200 { party, items }
 //   POST /trainer/starter  { species }  (Bearer)               → 201 { party, items }  (once)
 
 const START_MAP = "vaniville";
+// Cutscenes the client plays by itself and only tells the server about. Nothing that gives items or
+// Pokémon belongs here: the server can't check the client really watched them.
+const CLIENT_EVENTS = new Set(["neighbors"]);
 const USERNAME = /^[A-Za-z0-9_]{3,16}$/;
 const TRAINER_NAME = /^[\p{L}\p{N} ]{1,12}$/u; // letters (any language), digits, spaces
 const PASSWORD_MIN = 8;
@@ -113,6 +117,17 @@ export function authRoutes(app: express.Application, maps: Map<string, GameMap>)
     res.json({ trainer: publicTrainer({ ...session, appearance: look }) });
   }));
 
+  app.post("/trainer/story", handle(async (req, res) => {
+    const session = await findSession(bearer(req));
+    if (!session) throw new HttpError(401, "Not logged in.");
+    const event = field(req, "event");
+    if (!CLIENT_EVENTS.has(event)) throw new HttpError(400, "Unknown story event.");
+    if (session.flags.intro !== true) throw new HttpError(400, "Finish the intro first.");
+    await pool.query("UPDATE trainers SET flags = flags || jsonb_build_object($2::text, true) WHERE id = $1",
+      [session.trainerId, event]);
+    res.json({ trainer: publicTrainer({ ...session, flags: { ...session.flags, [event]: true } }) });
+  }));
+
   app.get("/trainer/party", handle(async (req, res) => {
     const session = await findSession(bearer(req));
     if (!session) throw new HttpError(401, "Not logged in.");
@@ -149,6 +164,7 @@ function publicTrainer(t: SessionTrainer) {
   return {
     name: t.name, mapId: t.mapId, x: t.x, y: t.y, facing: t.facing, appearance: t.appearance,
     introDone: t.flags.intro === true,
+    story: Object.keys(t.flags).filter((k) => t.flags[k] === true), // events seen, e.g. ["intro", "neighbors"]
   };
 }
 

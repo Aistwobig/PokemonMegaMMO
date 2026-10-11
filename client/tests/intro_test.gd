@@ -93,7 +93,30 @@ func _ready() -> void:
 	await _wait(3.0)
 	_check("out the door into the world", _scene_name() == "World", _scene_name())
 	_check("intro saved as seen", Session.intro_done())
+
+	# --- the neighbors come to say hello ---
+	var world := get_tree().current_scene
+	world.accept_input = false
+	var scene: Node = null
+	for i in 60:
+		for c in world.get_children():
+			if c is NeighborsScene:
+				scene = c
+		if scene:
+			break
+		await _wait(0.1)
+	_check("Shauna and the neighbor come to the door", scene != null)
 	await _wait(3.0)
+	await _shot("neighbors")
+	for i in 40:
+		if not is_instance_valid(scene):
+			break
+		if i == 9:
+			await _shot("mom_sees_off")
+		await _press(KEY_SPACE)
+	_check("neighbors scene finishes", not is_instance_valid(scene))
+	_check("neighbors scene saved as seen", Session.has_seen("neighbors"), str(Session.trainer.get("story")))
+	await _wait(1.0)
 	await _shot("world")
 	_done()
 

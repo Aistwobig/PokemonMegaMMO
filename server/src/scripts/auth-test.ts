@@ -140,6 +140,8 @@ check("no look before character creation", r.data.trainer?.appearance === null, 
 check("intro not seen yet", r.data.trainer?.introDone === false, JSON.stringify(r.data));
 r = await call("POST", "/trainer/intro", undefined, token);
 check("intro needs a look first", r.status === 400, JSON.stringify(r));
+r = await call("POST", "/trainer/story", { event: "neighbors" }, token);
+check("story events need the intro first", r.status === 400, JSON.stringify(r));
 r = await call("PUT", "/trainer/appearance", { look: { ...calem, gender: "f9" } }, token);
 check("unknown gender rejected", r.status === 400, JSON.stringify(r));
 r = await call("PUT", "/trainer/appearance", { look: { ...calem, parts: { ...calem.parts, hat: { part: "f2_tops_jersey", color: "d01b01" } } } }, token);
@@ -158,6 +160,10 @@ r = await call("POST", "/trainer/intro", undefined, token);
 check("intro marked as seen", r.status === 200 && r.data.trainer?.introDone === true, JSON.stringify(r));
 r = await call("GET", "/auth/me", undefined, token);
 check("intro flag saved", r.data.trainer?.introDone === true, JSON.stringify(r.data));
+r = await call("POST", "/trainer/story", { event: "gotStarter" }, token);
+check("only client cutscenes can be marked", r.status === 400, JSON.stringify(r));
+r = await call("POST", "/trainer/story", { event: "neighbors" }, token);
+check("neighbors scene marked as seen", r.status === 200 && r.data.trainer?.story?.includes("neighbors"), JSON.stringify(r));
 const looked = await join(token, (await call("GET", "/auth/me", undefined, token)).data.trainer.mapId);
 if (typeof looked !== "string") {
   await sleep(300);

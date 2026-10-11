@@ -58,6 +58,8 @@ creation, which saves it with `PUT /trainer/appearance { look }` (Bearer token):
   "parts": { "face": {"part":"f2_face01"}, "tops": {"part":"f2_tops_jersey","color":"d01b02"}, ... } }
 ```
 
+`story` lists the story events seen (`intro`, `neighbors`, ...). The client marks the cutscenes it
+plays itself with `POST /trainer/story { event }` (only `neighbors` so far; Bearer, after the intro).
 `introDone` is false until the client finishes the intro (Sycamore's welcome, waking up at home)
 and calls `POST /trainer/intro` (Bearer, needs a look first) → `200 { trainer }`. Story flags live
 in the `trainers.flags` JSONB column; only the server sets them.

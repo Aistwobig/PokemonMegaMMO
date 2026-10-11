@@ -60,8 +60,10 @@ def _decode(kind, r):
     if kind == "furniture":
         return {"script": u16(0), "x": u16(0x08), "y": u16(0x0A), "w": u16(0x0C), "h": u16(0x0E)}
     if kind == "npcs":
-        return {"id": u16(0), "model": u16(2), "x": u16(0x24), "y": u16(0x26),
-                "z": struct.unpack_from("<f", r, 0x28)[0], "raw": r.hex()}
+        # model = overworld model id (a/0/2/1 entry for story characters, e.g. 3 Shauna, 7 Mom);
+        # x, y in global tiles, height in world units.
+        return {"id": u16(0), "model": u16(2), "script": u16(0x08), "x": u16(0x28), "y": u16(0x2A),
+                "height": struct.unpack_from("<f", r, 0x2C)[0]}
     if kind == "warps":
         return {"toZone": u16(0), "toWarp": u16(2), "raw": r.hex()}
     return {"raw": r.hex()}

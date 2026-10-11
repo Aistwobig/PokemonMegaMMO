@@ -75,6 +75,19 @@ func complete_intro() -> String:
 	return res.data.get("error", "Something went wrong (error %d)." % res.code)
 
 
+func has_seen(event: String) -> bool:
+	return event in trainer.get("story", [])
+
+
+## Tells the server a cutscene the client plays by itself was seen (see server/README.md).
+func mark_story(event: String) -> String:
+	var res := await _request(HTTPClient.METHOD_POST, "/trainer/story", {event = event})
+	if res.code == 200:
+		trainer = res.data.trainer
+		return ""
+	return res.data.get("error", "Something went wrong (error %d)." % res.code)
+
+
 ## The party and bag: { party: [{species, name, level, hp, maxHp, ...}], items: {pokeball: n} }, or {} if
 ## the server can't be reached.
 func get_party() -> Dictionary:
