@@ -14,6 +14,7 @@ For now these are manual steps; they become one `import` command later.
 - `tools/tiles.py`: reads a map chunk's 40×40 tile grid.
 - `tools/make_map.py`: builds a server map (walkable/blocked only) from map chunks.
 - `tools/zone.py`: zone table and zone events (furniture, NPCs, warps, triggers).
+- `tools/pokemon.py`: Pokémon models with their battle motions.
 - `tools/make_catalog.py`: builds `server/data/appearance.json` from the trainer manifests.
 
 Python 3 (`py -3` on Windows). Below, `R` is the RomFS folder and `C` is `client/asset-cache`.
@@ -48,6 +49,15 @@ and (11,15), so global (440, 560) is the town's top-left).
 py -3 tools/text.py json R/a/0/7/4 C/text/game
 py -3 tools/text.py json R/a/0/8/2 C/text/story
 ```
+
+**Pokémon** (models, textures and battle motions; dex number:Showdown id). Each material's UV
+transform and wrap mode goes into `<id>.materials.json`; the client applies them with a shader:
+
+```
+py -3 tools/pokemon.py R C/pokemon <BchTool.exe> 650:chespin 651:quilladin 653:fennekin 654:braixen 656:froakie 657:frogadier 661:fletchling 662:fletchinder 659:bunnelby 660:diggersby 664:scatterbug 665:spewpa 263:zigzagoon 264:linoone
+```
+
+Battle motions: 0 idle, 1 appear, 8 physical attack, 12 special attack, 16 hit, 17 faint.
 
 **Story characters.** For each id N (Sycamore = 6, Mom = 7):
 

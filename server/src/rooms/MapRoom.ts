@@ -5,6 +5,9 @@ import { findSession, type SessionTrainer } from "../auth/sessions.ts";
 import { type Direction, type GameMap, isWalkable, rollEncounter, step, tileAt, warpAt } from "../world/maps.ts";
 import { claimOnline, releaseOnline } from "../world/online.ts";
 import { issueTicket, redeemTicket, type Transfer } from "../world/transfers.ts";
+import { healParty, itemCount, loadParty, saveParty, storeCaught, useItem } from "../battle/party.ts";
+import { generate } from "../battle/pokemon.ts";
+import { BALLS, WildBattle, type Action, type Update } from "../battle/wild.ts";
 
 // One room type per map (registered in index.ts). If a map fills up, Colyseus opens
 // another instance of it — effectively a channel.
@@ -25,7 +28,8 @@ export class MapRoom extends Room<{ state: MapState }> {
   maxClients = 100;
   private map!: GameMap;
   private lastStepAt = new Map<string, number>();
-  private inBattle = new Set<string>();
+  private battles = new Map<string, WildBattle>(); // sessionId → the wild battle they're in
+  private starting = new Set<string>(); // a battle is being set up (loading the party)
   private warping = new Set<string>();
 
   onCreate(options: { map: GameMap }) {
@@ -34,8 +38,7 @@ export class MapRoom extends Room<{ state: MapState }> {
 
     this.onMessage("move", (client, dir: unknown) => this.handleMove(client, dir));
 
-    // Placeholder until Phase 3: the client dismisses the encounter screen.
-    this.onMessage("battleEnd", (client) => this.inBattle.delete(client.sessionId));
+    this.onMessage("battle", (client, action: unknown) => this.handleBattle(client, action));
   }
 
   // Runs when the client asks for a seat, with its login token (client.auth.token in the SDK).
@@ -69,7 +72,10 @@ export class MapRoom extends Room<{ state: MapState }> {
     const player = this.state.players.get(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.lastStepAt.delete(client.sessionId);
-    this.inBattle.delete(client.sessionId);
+    // Leaving mid-battle (disconnect, closing the game) counts as running away; damage is kept.
+    const battle = this.battles.get(client.sessionId);
+    this.battles.delete(client.sessionId);
+    if (battle) await saveParty(auth.trainer.trainerId, battle.party);
     releaseOnline(auth.trainer.trainerId, client);
     if (this.warping.delete(client.sessionId) || !player) return; // the warp already saved the destination
     await pool.query(
@@ -81,13 +87,20 @@ export class MapRoom extends Room<{ state: MapState }> {
   private async handleMove(client: Client, dir: unknown) {
     const player = this.state.players.get(client.sessionId);
     if (!player || typeof dir !== "string" || !DIRECTIONS.has(dir as Direction)) return;
-    if (this.inBattle.has(client.sessionId) || this.warping.has(client.sessionId)) return;
+    if (this.inBattle(client) || this.warping.has(client.sessionId)) return;
 
     const now = Date.now();
     if (now - (this.lastStepAt.get(client.sessionId) ?? 0) < STEP_COOLDOWN_MS) return;
 
     player.facing = dir;
     const next = step(player.x, player.y, dir as Direction);
+    if (this.map.heal && next.x === this.map.heal.x && next.y === this.map.heal.y) {
+      // Walking into your own front door: Mom heals your Pokémon.
+      this.lastStepAt.set(client.sessionId, now);
+      await healParty((client.auth as AuthData).trainer.trainerId);
+      client.send("healed", {});
+      return;
+    }
     if (!isWalkable(this.map, next.x, next.y)) return; // turned to face the wall, didn't move
 
     this.lastStepAt.set(client.sessionId, now);
@@ -108,10 +121,88 @@ export class MapRoom extends Room<{ state: MapState }> {
 
     if (tileAt(this.map, next.x, next.y) === "G") {
       const wild = rollEncounter(this.map);
-      if (wild) {
-        this.inBattle.add(client.sessionId);
-        client.send("wildEncounter", wild);
-      }
+      if (wild) await this.startBattle(client, wild);
     }
+  }
+
+  private inBattle(client: Client): boolean {
+    return this.battles.has(client.sessionId) || this.starting.has(client.sessionId);
+  }
+
+  // --- wild battles ------------------------------------------------------------------------------
+
+  private async startBattle(client: Client, wild: { species: string; level: number }) {
+    const { trainer } = client.auth as AuthData;
+    this.starting.add(client.sessionId);
+    try {
+      const party = await loadParty(trainer.trainerId);
+      if (!party.some((m) => m.currentHp !== 0)) return; // no Pokémon that can fight: wild ones stay away
+      const battle = new WildBattle(party, generate(wild.species, wild.level), {
+        playerName: trainer.name,
+        useBall: (item) => useItem(trainer.trainerId, item),
+        balls: async () => Object.fromEntries(await Promise.all(
+          Object.keys(BALLS).map(async (b) => [b, await itemCount(trainer.trainerId, b)]))),
+      });
+      const update = await battle.start();
+      this.battles.set(client.sessionId, battle);
+      client.send("battleStart", update);
+    } finally {
+      this.starting.delete(client.sessionId);
+    }
+  }
+
+  private async handleBattle(client: Client, raw: unknown) {
+    const battle = this.battles.get(client.sessionId);
+    const action = parseAction(raw);
+    if (!battle || !action) return;
+    let update: Update;
+    try {
+      update = await battle.act(action);
+    } catch (err) {
+      console.error("battle action failed:", err);
+      return;
+    }
+    if (update.result) await this.endBattle(client, battle, update.result);
+    client.send("battleUpdate", update);
+  }
+
+  private async endBattle(client: Client, battle: WildBattle, result: NonNullable<Update["result"]>) {
+    const { trainer } = client.auth as AuthData;
+    this.battles.delete(client.sessionId);
+    await saveParty(trainer.trainerId, battle.party);
+    if (result === "caught") await storeCaught(trainer.trainerId, battle.wild, battle.caughtBall ?? "pokeball", this.map.id);
+    if (result === "lost") await this.blackOut(client);
+  }
+
+  /** Out of usable Pokémon: back home to Vaniville with the party healed (Mom takes care of them). */
+  private async blackOut(client: Client) {
+    const { trainer } = client.auth as AuthData;
+    const player = this.state.players.get(client.sessionId);
+    await healParty(trainer.trainerId);
+    const home = { mapId: "vaniville", x: 27, y: 37, facing: "down" };
+    if (this.map.id === home.mapId && player) {
+      player.x = home.x;
+      player.y = home.y;
+      player.facing = home.facing;
+      return;
+    }
+    this.warping.add(client.sessionId);
+    await pool.query("UPDATE trainers SET map_id = $2, x = $3, y = $4, facing = $5 WHERE id = $1",
+      [trainer.trainerId, home.mapId, home.x, home.y, home.facing]);
+    const ticket = issueTicket({ trainerId: trainer.trainerId, ...home });
+    // Sent after the battle's last update, so the client finishes the "blacked out" text first.
+    setTimeout(() => client.send("warp", { to: home.mapId, ticket, blackout: true }), 0);
+  }
+}
+
+function parseAction(raw: unknown): Action | null {
+  if (!raw || typeof raw !== "object") return null;
+  const a = raw as Record<string, unknown>;
+  switch (a.type) {
+    case "move": return Number.isInteger(a.index) && (a.index as number) >= 0 && (a.index as number) < 4 ? { type: "move", index: a.index as number } : null;
+    case "switch": return Number.isInteger(a.slot) && (a.slot as number) >= 0 && (a.slot as number) < 6 ? { type: "switch", slot: a.slot as number } : null;
+    case "ball": return typeof a.item === "string" && a.item in BALLS ? { type: "ball", item: a.item } : null;
+    case "run": return { type: "run" };
+    default: return null;
   }
 }

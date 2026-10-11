@@ -29,6 +29,7 @@ export interface GameMap {
   origin?: { x: number; y: number }; // real maps: top-left tile in the X/Y map matrix
   tiles: string[];
   spawn: { x: number; y: number };
+  heal?: { x: number; y: number }; // walking into this tile heals the party (the player's front door)
   warps: Warp[];
   encounterRate: number; // chance per step in grass, 0..1
   encounters: Encounter[];

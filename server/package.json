@@ -9,7 +9,8 @@
     "db:migrate": "tsx src/scripts/migrate.ts",
     "battle:demo": "tsx src/scripts/battle-demo.ts",
     "bot": "tsx src/scripts/bot.ts",
-    "test:auth": "tsx src/scripts/auth-test.ts"
+    "test:auth": "tsx src/scripts/auth-test.ts",
+    "test:battle": "tsx src/scripts/battle-test.ts"
   },
   "license": "UNLICENSED",
   "type": "module",

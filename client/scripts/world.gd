@@ -26,6 +26,11 @@ var _next_step_at := 0.0
 var _heights := {} # Vector2i global tile -> ground height
 var _origin := Vector2i(440, 560) # global tile of the current room's (0, 0), from the room state
 var _carry: RemoteTrainer # our own trainer, kept across a warp so the walk looks seamless
+var _teleport := false # the next warp jumps instead of walking (blacking out)
+var _battle: BattleScene
+var _busy := false # a battle, the starter choice or a message is on screen: no walking
+var _box: DialogueBox
+var _has_pokemon := true # until the server says otherwise; false shows the starter choice in Aquacorde
 ## Tests turn this off so stray key presses (the window takes focus while you type) can't move.
 var accept_input := true
 
@@ -47,6 +52,10 @@ func _ready() -> void:
 	_status.add_theme_constant_override("outline_size", 6)
 	_status.add_theme_color_override("font_outline_color", Color.BLACK)
 	town.get_node("HUD").add_child(_status)
+	_box = DialogueBox.new()
+	add_child(_box)
+	var party := await Session.get_party()
+	_has_pokemon = party.is_empty() or not party.get("party", []).is_empty()
 	_join(Session.trainer.get("mapId", "vaniville"), "")
 
 
@@ -72,10 +81,15 @@ func _join(map_id: String, ticket: String) -> void:
 func _on_message(type: Variant, data: Variant) -> void:
 	match str(type):
 		"warp":
+			_teleport = data.get("blackout", false) == true
 			_warp(str(data.get("to", "")), str(data.get("ticket", "")))
-		"wildEncounter":
-			_status.text = "A wild %s appeared! (battles come in Phase 3)" % data.get("species", "?")
-			_room.send_message("battleEnd")
+		"battleStart":
+			_start_battle(data)
+		"battleUpdate":
+			if _battle:
+				_battle.apply(data)
+		"healed":
+			_mom_heals()
 
 
 ## Moves to the next map. Neighbouring overworld maps share one 3D world, so our trainer stays
@@ -90,6 +104,59 @@ func _warp(to: String, ticket: String) -> void:
 	_room = null
 	old.leave()
 	_join(to, ticket)
+
+
+func _start_battle(update: Dictionary) -> void:
+	var me: RemoteTrainer = _players.get(_room.get_session_id())
+	if me == null:
+		return
+	_busy = true
+	# Trainers step out of the picture during a battle, as in X/Y (the camera stands where we were).
+	for rt: RemoteTrainer in _players.values():
+		rt.visible = false
+	_battle = BattleScene.new(me, update, func(action: Dictionary) -> void:
+		if _room:
+			_room.send_message("battle", action))
+	add_child(_battle)
+	var result: String = await _battle.finished
+	_battle = null
+	for rt: RemoteTrainer in _players.values():
+		rt.visible = true
+	_camera.make_current()
+	var fade := ScreenFade.new(Color.BLACK)
+	add_child(fade)
+	# Blacked out somewhere else: the server warps us home and the arrival clears the busy flag.
+	_busy = result == "lost" and _room != null and str(_room.state.get("mapId", "")) != "vaniville"
+	await fade.clear(0.4)
+	fade.queue_free()
+
+
+## Walking into your front door: Mom heals your Pokémon (story text 55, lines 29–30).
+func _mom_heals() -> void:
+	if _busy:
+		return
+	_busy = true
+	var name: String = Session.trainer.get("name", "")
+	_box.speaker = "Mom"
+	await _box.say(GameText.pages(GameText.HOME, 29, name, Session.gender()))
+	await _box.say(GameText.pages(GameText.HOME, 30, name, Session.gender()))
+	_busy = false
+
+
+## The first time in Aquacorde without a Pokémon: pick a starter.
+func _maybe_choose_starter() -> void:
+	if _has_pokemon or _busy or _room == null or str(_room.state.get("mapId", "")) != "aquacorde":
+		return
+	var me: RemoteTrainer = _players.get(_room.get_session_id())
+	if me == null:
+		return
+	_busy = true
+	_has_pokemon = true
+	var choice := StarterChoice.new(me)
+	add_child(choice)
+	await choice.finished
+	_camera.make_current()
+	_busy = false
 
 
 func _on_left(code: int, _reason: String) -> void:
@@ -114,7 +181,12 @@ func _sync_players() -> void:
 			rt = _carry # ourselves, arriving from the previous map
 			_carry = null
 			_players[sid] = rt
-			rt.move_to(_tile_to_world(p.x, p.y), p.facing)
+			if _teleport:
+				rt.teleport(_tile_to_world(p.x, p.y), p.facing)
+				_teleport = false
+				_busy = false
+			else:
+				rt.move_to(_tile_to_world(p.x, p.y), p.facing)
 		elif rt == null:
 			rt = RemoteTrainer.new(p.get("name", "Trainer"), p.get("look", ""), sid == _room.get_session_id())
 			add_child(rt)
@@ -130,9 +202,12 @@ func _sync_players() -> void:
 
 func _process(_delta: float) -> void:
 	var me: RemoteTrainer = _players.get(_room.get_session_id()) if _room else null
-	if me:
+	if me and _battle == null:
 		_camera.look_at_from_position(me.position + CAMERA_OFFSET, me.position + Vector3(0, 22, 0))
 	if _room == null or not _room.connected:
+		return
+	_maybe_choose_starter()
+	if _busy:
 		return
 	var dir := _held_direction() if accept_input else ""
 	var now := Time.get_ticks_msec() / 1000.0

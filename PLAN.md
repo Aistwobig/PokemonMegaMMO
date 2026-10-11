@@ -132,7 +132,7 @@ after the loop works end to end: walk, battle, catch, save, see other players.
 | 0. Asset spike | One Pokémon model + one town map from the RomFS into Godot — **by hand first** (SPICA/Ohana3DS → Blender → glTF), then automate in the importer | Garchomp stands in Vaniville Town, viewed at 16:9 with edge issues noted |
 | 1. Overworld | Grid movement, camera, collision, map transitions | Walk from Vaniville through Route 1 to Aquacorde ✅ (real collision and 3D from Vaniville to Route 2; camera and outlines still approximate) |
 | 2. Multiplayer | Colyseus rooms, accounts (register/login ✅ server), Godot login screen, position sync, character customization | Two logged-in players with different outfits see each other walking |
-| 3. Wild battles | Encounter tables, Showdown sim + catch/EXP/AI wrapper, battle UI | Catch a Pokémon and it saves |
+| 3. Wild battles | Encounter tables, Showdown sim + catch/EXP/AI wrapper, battle UI | Catch a Pokémon and it saves ✅ (starter in Aquacorde, Route 2 wild battles, catching, EXP/levels/evolution, blackout; battle effects and move animations still basic) |
 | 4. Progression | NPCs, trainers, events, items, Pokémon Centers, gyms, Mega Evolution (Key Stone, Mega Stones, Mega button) | Earn badge 1; Lucario Mega Evolves |
 | 5. Social | PvP, trading, friends, chat channels, GTL marketplace | Two players trade and battle; a Pokémon sells on the GTL |
 

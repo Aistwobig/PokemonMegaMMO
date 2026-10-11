@@ -11,6 +11,7 @@ npm run dev              # start with auto-restart on file changes (ws://localho
 npm run bot -- Ash       # headless test player that walks to Route 2 (server must be running)
 npm run battle:demo      # one Gen 6 battle in the terminal: Lucario Mega Evolves vs a wild Fletchling
 npm run test:auth        # end-to-end account/login checks (server must be running)
+npm run test:battle      # starter, healing, walk to Route 2 and catch a wild Pokémon (server must be running)
 npm run db:migrate       # apply db/migrations (needs Postgres: docker compose up -d)
 npm run typecheck
 ```
@@ -26,6 +27,10 @@ src/rooms/state.ts     state synced to clients (players in the room)
 src/world/maps.ts      loads data/maps, tile/warp/encounter helpers
 src/world/transfers.ts warp tickets so clients can't choose where they arrive
 src/battle/showdown.ts Showdown sim wrapper
+src/battle/pokemon.ts  generating Pokémon, stats, EXP curves, level-up moves, evolutions
+src/battle/wild.ts     a wild battle: Showdown + wild AI, Poké Balls, running, EXP, messages
+src/battle/party.ts    party, PC and bag in Postgres; starters
+data/species.json      catch rates, EXP yields, growth rates (what Showdown's dex lacks)
 src/db/pool.ts         Postgres pool + transaction helper
 data/maps/*.json       map data: Vaniville has the real walkable tiles (importer/tools/make_map.py);
                        spawns, warps and the other maps are hand-written placeholders
@@ -42,6 +47,8 @@ HTTP on the same port (`http://localhost:2567`), JSON bodies:
 | `POST /auth/login` | `{ username, password }` | `200 { token, trainer }` |
 | `POST /auth/logout` | header `Authorization: Bearer <token>` | `204` |
 | `GET /auth/me` | header `Authorization: Bearer <token>` | `200 { trainer }` |
+| `GET /trainer/party` | Bearer | `200 { party: [{ species, name, level, hp, maxHp, status, moves }], items: { pokeball: n } }` |
+| `POST /trainer/starter` | `{ species }` (chespin/fennekin/froakie), Bearer | `201 { party, items }`; 409 if the trainer already has a Pokémon. Comes with 10 Poké Balls |
 
 `trainer` is `{ name, mapId, x, y, facing, appearance, introDone }`. `appearance` is `null` until character
 creation, which saves it with `PUT /trainer/appearance { look }` (Bearer token):
@@ -79,9 +86,17 @@ Log in first, set the token on the SDK (`client.auth.token = token`), then join 
 | Direction | Message | Payload |
 |---|---|---|
 | client → server | `move` | `"up" \| "down" \| "left" \| "right"` |
-| client → server | `battleEnd` | — (placeholder until Phase 3) |
-| server → client | `warp` | `{ to, ticket }` — leave this room, join `to` with `{ ticket }` |
-| server → client | `wildEncounter` | `{ species, level }` |
+| client → server | `battle` | `{ type: "move", index }`, `{ type: "switch", slot }`, `{ type: "ball", item }` or `{ type: "run" }` |
+| server → client | `warp` | `{ to, ticket, blackout? }` — leave this room, join `to` with `{ ticket }` |
+| server → client | `battleStart` / `battleUpdate` | `{ events, view, request, result? }` (see `src/battle/wild.ts`) |
+| server → client | `healed` | — walked into your front door; Mom healed the party |
+
+Wild battles: stepping on tall grass (`G`) may start one if the party has a Pokémon that can fight.
+The room blocks walking until it ends. `events` are messages and HP changes to play back in order;
+`request` is what to choose next (a move, or a forced switch after a faint), null once `result` is
+set (`win`, `caught`, `ran` or `lost`). Losing heals the party and warps you to your front door.
+EXP, EVs, level-up moves and level-up evolutions are applied when the battle ends; catching gives
+EXP too (Gen 6).
 
 Synced state: `mapId`, `originX`/`originY` (where tile (0, 0) sits on the X/Y overworld, in global
 tiles; -1 for placeholder maps), `players` (map of sessionId → `{ name, x, y, facing, look }`).
@@ -92,6 +107,6 @@ that keep the 3D world loaded across the warp see one seamless walk.
 
 ## Not done yet
 
-- Saving Pokémon, items and money (only position is saved so far)
-- Battles in rooms (Showdown runs only in `battle:demo` so far)
+- Trainer battles, items other than Poké Balls, money, the PC UI, move relearning
+- Encounter tables and catch rates are hand-written for the first areas; check them against the game
 - Redis (transfer tickets, rate limits and the online list are in memory, fine for one process)

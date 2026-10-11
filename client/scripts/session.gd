@@ -75,6 +75,23 @@ func complete_intro() -> String:
 	return res.data.get("error", "Something went wrong (error %d)." % res.code)
 
 
+## The party and bag: { party: [{species, name, level, hp, maxHp, ...}], items: {pokeball: n} }, or {} if
+## the server can't be reached.
+func get_party() -> Dictionary:
+	var res := await _request(HTTPClient.METHOD_GET, "/trainer/party")
+	return res.data if res.code == 200 else {}
+
+
+## Picks the first Pokémon (chespin, fennekin or froakie). Returns "" or an error message.
+func choose_starter(species: String) -> String:
+	var res := await _request(HTTPClient.METHOD_POST, "/trainer/starter", {species = species})
+	if res.code == 201:
+		return ""
+	if res.code == 0:
+		return "Can't reach the server at %s. Is it running?" % server_url
+	return res.data.get("error", "Something went wrong (error %d)." % res.code)
+
+
 ## "f1" (girl) or "f2" (boy), for text that differs by gender.
 func gender() -> String:
 	return trainer.get("appearance").get("gender", "f2") if has_appearance() else "f2"

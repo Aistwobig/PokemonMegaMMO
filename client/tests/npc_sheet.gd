@@ -7,8 +7,10 @@ const COLS := 9
 
 func _ready() -> void:
 	var ids := Array(OS.get_cmdline_user_args())
+	var pokemon := OS.get_environment("POKEMON") != "" # POKEMON=1: the Pokémon folder instead
+	var root := "res://asset-cache/pokemon" if pokemon else "res://asset-cache/npc"
 	if ids.is_empty():
-		for d in DirAccess.get_directories_at("res://asset-cache/npc"):
+		for d in DirAccess.get_directories_at(root):
 			ids.append(d)
 	var env := WorldEnvironment.new()
 	env.environment = Environment.new()
@@ -19,7 +21,7 @@ func _ready() -> void:
 	add_child(env)
 	var rows := ceili(ids.size() / float(COLS))
 	for i in ids.size():
-		var n := NpcModel.create(ids[i])
+		var n := NpcModel.create(ids[i], NpcModel.POKEMON if pokemon else NpcModel.FOLDER)
 		if n == null:
 			continue
 		var pos := Vector3((i % COLS - (COLS - 1) / 2.0) * 60.0, -(i / COLS) * 120.0, 0)

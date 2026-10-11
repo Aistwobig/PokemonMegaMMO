@@ -114,6 +114,7 @@ def main():
             "origin": {"x": x0, "y": m["origin"]},
             "tiles": rows,
             "spawn": old.get("spawn", {"x": 0, "y": 0}),
+            **({"heal": old["heal"]} if "heal" in old else {}),
             "warps": warps,
             "encounterRate": old.get("encounterRate", 0),
             "encounters": old.get("encounters", []),

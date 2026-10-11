@@ -57,7 +57,12 @@ static class Program
             {
                 Console.WriteLine($"  model {m.Name}: {m.Meshes.Count} meshes, {m.Skeleton.Count} bones, {m.Materials.Count} materials");
                 foreach (H3DMaterial mat in m.Materials)
+                {
                     Console.WriteLine($"    material {mat.Name}: {mat.Texture0Name} | {mat.Texture1Name} | {mat.Texture2Name}");
+                    var tc = mat.MaterialParams.TextureCoords[0];
+                    var tm = mat.TextureMappers[0];
+                    Console.WriteLine($"      uv0 scale {tc.Scale} rot {tc.Rotation} trans {tc.Translation} map {tc.MappingType} | wrap {tm.WrapU}/{tm.WrapV}");
+                }
             }
             foreach (var t in scene.Textures) Console.WriteLine($"  texture {t.Name} {t.Width}x{t.Height} {t.Format}");
             foreach (var a in scene.SkeletalAnimations) Console.WriteLine($"  anim {a.Name} ({a.FramesCount} frames)");
@@ -106,6 +111,7 @@ static class Program
         }
         var missing = used.Where(n => !scene.Textures.Contains(n) && !n.StartsWith("projection_dummy")).ToList();
 
+        WriteMaterialInfo(target, Path.Combine(outDir, name + ".materials.json"));
         Console.WriteLine($"{name}.dae: {target.Meshes.Count} meshes, {target.Skeleton.Count} bones, {written} textures, {fixedMaterials} material(s) re-pointed off projection_dummy");
         if (missing.Count > 0) Console.WriteLine("  textures not found: " + string.Join(", ", missing));
 
@@ -178,6 +184,28 @@ static class Program
 
         if (motions != null) ExportMotions(scene, outDir, "motion", motions);
         return 0;
+    }
+
+    /// The DAE keeps only each material's texture name. X/Y materials also transform their UVs
+    /// (Pokémon textures are often half a body, scaled 2x and mirrored) — write that down so the
+    /// client can apply it: m = [M11, M12, M21, M22, M41, M42] of the UV transform for texture 0,
+    /// u' = u*M11 + v*M21 + M41, v' = u*M12 + v*M22 + M42 (3DS UV space, v up).
+    static void WriteMaterialInfo(H3DModel model, string path)
+    {
+        var info = new Dictionary<string, object>();
+        foreach (H3DMaterial mat in model.Materials)
+        {
+            var t = mat.MaterialParams.TextureCoords[0].GetTransform();
+            var mapper = mat.TextureMappers[0];
+            info[mat.Name] = new Dictionary<string, object>
+            {
+                ["texture"] = mat.Texture0Name ?? "",
+                ["m"] = new[] { t.M11, t.M12, t.M21, t.M22, t.M41, t.M42 },
+                ["wrapU"] = mapper.WrapU.ToString(),
+                ["wrapV"] = mapper.WrapV.ToString(),
+            };
+        }
+        File.WriteAllText(path, new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(info));
     }
 
     /// Removes "--name value..." from args and returns the values. count = how many values to take

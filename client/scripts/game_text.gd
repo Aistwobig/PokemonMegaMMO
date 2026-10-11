@@ -8,6 +8,7 @@ const FOLDER := "res://asset-cache/text/%s/%d.json"
 const INTRO := ["game", 100] # Professor Sycamore's welcome
 const HOME := ["story", 55] # the player's house (Mom)
 const NEIGHBORS := ["story", 57] # Serena/Calem and Shauna outside
+const AQUACORDE := ["story", 49] # the café in Aquacorde: meeting Tierno and Trevor, picking a starter
 
 static var _cache := {}
 static var _var := RegEx.create_from_string("\\[VAR ([0-9A-F]{4})(?:\\(([0-9A-F,]*)\\))?\\]")
@@ -44,8 +45,8 @@ static func format(text: String, player_name: String, gender: String) -> PackedS
 		pos = m.get_end()
 		var args := m.get_string(2).split(",", false)
 		match m.get_string(1):
-			"0100":
-				out += player_name
+			"0100", "0189", "018A":
+				out += player_name # the name; 0189/018A are the nickname friends give you (we use the name)
 			"1100":
 				var lens := args[1].hex_to_int() if args.size() > 1 else 0
 				var boy_len := lens & 0xFF

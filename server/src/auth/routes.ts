@@ -2,6 +2,7 @@ import { randomInt } from "node:crypto";
 import express, { type Request, type Response } from "express";
 import { pool, transaction } from "../db/pool.ts";
 import { LookError, validateLook } from "../world/appearance.ts";
+import { giveStarter, partySummary, STARTERS } from "../battle/party.ts";
 import type { GameMap } from "../world/maps.ts";
 import { DUMMY_HASH, hashPassword, verifyPassword } from "./passwords.ts";
 import { RateLimiter } from "./rateLimit.ts";
@@ -14,6 +15,8 @@ import { createSession, deleteSession, findSession, type SessionTrainer } from "
 //   GET  /auth/me        Authorization: Bearer <token>        → 200 { trainer }
 //   PUT  /trainer/appearance  { look }  (Bearer)               → 200 { trainer }   (character creation)
 //   POST /trainer/intro                 (Bearer)               → 200 { trainer }   (intro cutscene seen)
+//   GET  /trainer/party                 (Bearer)               → 200 { party, items }
+//   POST /trainer/starter  { species }  (Bearer)               → 201 { party, items }  (once)
 
 const START_MAP = "vaniville";
 const USERNAME = /^[A-Za-z0-9_]{3,16}$/;
@@ -108,6 +111,22 @@ export function authRoutes(app: express.Application, maps: Map<string, GameMap>)
     }
     await pool.query("UPDATE trainers SET appearance = $2 WHERE id = $1", [session.trainerId, look]);
     res.json({ trainer: publicTrainer({ ...session, appearance: look }) });
+  }));
+
+  app.get("/trainer/party", handle(async (req, res) => {
+    const session = await findSession(bearer(req));
+    if (!session) throw new HttpError(401, "Not logged in.");
+    res.json(await partySummary(session.trainerId));
+  }));
+
+  // The first Pokémon (Chespin, Fennekin or Froakie), chosen in Aquacorde. Only once.
+  app.post("/trainer/starter", handle(async (req, res) => {
+    const session = await findSession(bearer(req));
+    if (!session) throw new HttpError(401, "Not logged in.");
+    const species = field(req, "species");
+    if (!STARTERS.includes(species)) throw new HttpError(400, "Pick Chespin, Fennekin or Froakie.");
+    if (!(await giveStarter(session.trainerId, species))) throw new HttpError(409, "You already have a Pokémon.");
+    res.status(201).json(await partySummary(session.trainerId));
   }));
 
   // The intro (Sycamore's welcome, waking up at home) plays once, after character creation.
