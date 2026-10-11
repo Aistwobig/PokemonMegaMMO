@@ -5,9 +5,10 @@ import {
   dex, evolutionAt, expForLevel, extra, maxHp, movesLearnedAt, speciesName, STATS, toSet, type Mon,
 } from "./pokemon.ts";
 
-// One wild battle: Showdown resolves the turns; this adds what it doesn't do — the wild
-// Pokémon's choices, Poké Balls, running away, EXP, level-ups, new moves and evolution — and turns
-// Showdown's log into the messages and HP changes the client plays back.
+// One battle against a wild Pokémon or an NPC trainer. Showdown resolves the turns; this adds what
+// it doesn't do — the opponent's choices, Poké Balls, running away, EXP, prize money, level-ups, new
+// moves and evolution — and turns Showdown's log into the messages and HP changes the client plays
+// back. (Below, "wild" means the opposing side, a trainer's Pokémon included.)
 
 const { Battle, Teams } = showdown as any;
 
@@ -31,16 +32,30 @@ export interface Update {
   view: BattleView;
   request: RequestView | null; // what the player must choose next; null when the battle is over
   result?: "win" | "caught" | "ran" | "lost";
+  prize?: number; // money won from a trainer
 }
 
 interface MonView { slot: number; name: string; species: string; level: number; hp: number; maxHp: number; status: string | null; gender: string; shiny: boolean }
-export interface BattleView { player: MonView | null; wild: MonView; party: MonView[]; balls: Record<string, number> }
+export interface BattleView {
+  player: MonView | null;
+  wild: MonView;
+  party: MonView[];
+  balls: Record<string, number>;
+  trainer: { name: string; className: string; left: number } | null; // left = Pokémon still able to fight
+}
 export interface RequestView {
   kind: "move" | "switch";
   moves: { index: number; id: string; name: string; type: string; pp: number; maxPp: number; disabled: boolean }[];
 }
 
 export const BALLS: Record<string, number> = { pokeball: 1, greatball: 1.5, ultraball: 2 };
+
+/** An NPC trainer: their team fights one by one; no catching, no running. */
+export interface TrainerInfo {
+  name: string;
+  className: string;
+  money: number; // prize = money × 4 × the last Pokémon's level
+}
 
 export interface WildBattleHooks {
   playerName: string;
@@ -53,19 +68,31 @@ export class WildBattle {
   private battle: any;
   private logPos = 0;
   private mons = new Map<any, Mon>(); // Showdown Pokémon → our stored Pokémon
-  private participants = new Set<Mon>(); // fought the wild Pokémon (they share the EXP)
+  private participants = new Set<Mon>(); // fought the current opposing Pokémon (they share its EXP)
+  private foes = new Map<any, Mon>(); // Showdown's opposing Pokémon → ours
+  private expGiven = new Set<Mon>(); // opposing Pokémon already paid out
   private runAttempts = 0;
   private wildAppeared = false;
   private done = false;
 
-  constructor(readonly party: Mon[], readonly wild: Mon, private hooks: WildBattleHooks) {}
+  readonly wild: Mon; // the first opposing Pokémon (for wild battles, the one you can catch)
+
+  constructor(readonly party: Mon[], readonly foeTeam: Mon[], private hooks: WildBattleHooks,
+    readonly trainer: TrainerInfo | null = null) {
+    this.wild = foeTeam[0];
+  }
+
+  private get trainerTitle(): string {
+    return this.trainer ? `${this.trainer.className} ${this.trainer.name}` : "";
+  }
 
   /** Starts the battle with the first Pokémon that can fight. */
   async start(): Promise<Update> {
     const b = new Battle({ formatid: FORMAT });
     this.battle = b;
     b.setPlayer("p1", { name: this.hooks.playerName, team: Teams.pack(this.party.map(toSet)) });
-    b.setPlayer("p2", { name: "Wild", team: Teams.pack([toSet(this.wild)]) });
+    b.setPlayer("p2", { name: this.trainer ? this.trainerTitle : "Wild", team: Teams.pack(this.foeTeam.map(toSet)) });
+    this.foeTeam.forEach((m, i) => this.foes.set(b.p2.pokemon[i], m));
     // Showdown starts everyone at full health; carry over HP and status from earlier battles.
     this.party.forEach((m, i) => {
       const p = b.p1.pokemon[i];
@@ -75,11 +102,12 @@ export class WildBattle {
     const lead = this.party.findIndex((m) => m.currentHp !== 0);
     const order = [lead, ...this.party.map((_, i) => i).filter((i) => i !== lead)].map((i) => i + 1).join("");
     b.choose("p1", `team ${order}`);
-    b.choose("p2", "team 1");
+    b.choose("p2", `team ${this.foeTeam.map((_, i) => i + 1).join("")}`);
     this.noteActive();
-    // "A wild Bunnelby appeared!" comes before "Go! Froakie!", as in the games.
+    // "A wild Bunnelby appeared!" (or the trainer's challenge) comes before "Go! Froakie!", as in the games.
     const events = await this.events();
-    events.sort((x, y) => Number(y.anim === "appear") - Number(x.anim === "appear"));
+    events.sort((x, y) => Number(y.side === "wild") - Number(x.side === "wild"));
+    if (this.trainer) events.unshift({ text: `You are challenged by ${this.trainerTitle}!` });
     return this.update(events);
   }
 
@@ -104,6 +132,7 @@ export class WildBattle {
         return this.doSwitch(action.slot, false);
       case "ball": {
         if (!(action.item in BALLS)) return this.update([]);
+        if (this.trainer) return this.update([{ text: "The Trainer blocked your Poké Ball!" }, { text: "Don't be a thief!" }]);
         if (!(await this.hooks.useBall(action.item))) return this.update([{ text: "You don't have any of those!" }]);
         const caught = this.throwBall(action.item, pre);
         if (caught) return this.finishCaught(pre, action.item);
@@ -111,6 +140,7 @@ export class WildBattle {
         break;
       }
       case "run": {
+        if (this.trainer) return this.update([{ text: "No! There's no running from a Trainer battle!" }]);
         if (this.tryRun()) {
           this.done = true;
           return this.update([{ text: "Got away safely!" }], "ran");
@@ -138,7 +168,23 @@ export class WildBattle {
     const b = this.battle;
     const events = [...pre, ...(await this.events())];
     this.noteActive();
-    if (b.p2.pokemon[0].fainted) return this.finishWon(events);
+    // Each opposing Pokémon pays out EXP when it faints (a trainer's too, before the next comes out).
+    for (const [p, m] of this.foes) {
+      if (p.fainted && !this.expGiven.has(m)) {
+        this.expGiven.add(m);
+        this.writeBack();
+        events.push(...this.gainExp(m));
+        this.participants.clear();
+      }
+    }
+    if (b.p2.pokemon.every((p: any) => p.fainted)) return this.finishWon(events);
+    if (b.p2.activeRequest?.forceSwitch) {
+      // The trainer sends out their next Pokémon.
+      const next = b.p2.pokemon.findIndex((p: any) => !p.fainted && !p.isActive);
+      b.choose("p2", `switch ${next + 1}`);
+      events.push(...(await this.events()));
+      this.noteActive();
+    }
     if (b.p1.pokemon.every((p: any) => p.fainted)) {
       this.done = true;
       this.writeBack();
@@ -197,9 +243,15 @@ export class WildBattle {
   private async finishWon(events: BattleEvent[]): Promise<Update> {
     this.done = true;
     this.writeBack();
-    events.push(...this.gainExp());
+    let prize = 0;
+    if (this.trainer) {
+      const last = this.foeTeam[this.foeTeam.length - 1];
+      prize = this.trainer.money * 4 * last.level;
+      events.push({ text: `You defeated ${this.trainerTitle}!` }, { text: `You got ₽${prize} for winning!` });
+    }
     events.push(...this.evolve());
-    return this.update(events, "win");
+    const u = await this.update(events, "win");
+    return prize ? { ...u, prize } : u;
   }
 
   private async finishCaught(events: BattleEvent[], ball: string): Promise<Update> {
@@ -210,7 +262,7 @@ export class WildBattle {
     this.caughtBall = ball;
     events.push({ anim: "caught", text: `Gotcha! ${speciesName(this.wild.species)} was caught!` });
     this.writeBack();
-    events.push(...this.gainExp()); // since Gen 6, catching gives EXP too
+    events.push(...this.gainExp(this.wild)); // since Gen 6, catching gives EXP too
     events.push(...this.evolve());
     return this.update(events, "caught");
   }
@@ -225,13 +277,15 @@ export class WildBattle {
     }
   }
 
-  /** Gen 6 (X/Y) EXP: base yield × the wild Pokémon's level / 7, split between the Pokémon that fought. */
-  private gainExp(): BattleEvent[] {
+  /** Gen 6 (X/Y) EXP: base yield × the defeated Pokémon's level / 7 (× 1.5 from a trainer), split
+   *  between the Pokémon that fought it. */
+  private gainExp(foe: Mon): BattleEvent[] {
     const events: BattleEvent[] = [];
     const fighters = [...this.participants].filter((m) => m.currentHp !== 0);
     if (!fighters.length) return events;
-    const yieldInfo = extra(this.wild.species);
-    const each = Math.max(1, Math.floor(Math.floor((yieldInfo.baseExp * this.wild.level) / 7) / fighters.length));
+    const yieldInfo = extra(foe.species);
+    const base = Math.floor((yieldInfo.baseExp * foe.level) / 7 * (this.trainer ? 1.5 : 1));
+    const each = Math.max(1, Math.floor(base / fighters.length));
     for (const m of fighters) {
       const name = m.nickname ?? speciesName(m.species);
       events.push({ text: `${name} gained ${each} Exp. Points!` });
@@ -307,7 +361,8 @@ export class WildBattle {
     const side = (who: string) => (who?.startsWith("p1") ? "player" : "wild") as "player" | "wild";
     const nameOf = (who: string, start = false) => {
       const n = who?.split(": ")[1] ?? "?";
-      return side(who) === "wild" ? `${start ? "The" : "the"} wild ${n}` : n;
+      if (side(who) !== "wild") return n;
+      return this.trainer ? `${start ? "The" : "the"} opposing ${n}` : `${start ? "The" : "the"} wild ${n}`;
     };
     const hpOf = (cond: string) => {
       const [hpPart] = (cond ?? "").split(" ");
@@ -318,7 +373,9 @@ export class WildBattle {
       case "switch": {
         const { hp, maxHp: mhp } = hpOf(c);
         const species = dex.species.get(b.split(",")[0]).id;
-        if (side(a) === "wild") {
+        if (side(a) === "wild" && this.trainer) {
+          out.push({ text: `${this.trainerTitle} sent out ${a.split(": ")[1]}!`, side: "wild", hp, maxHp: mhp, anim: "appear", species });
+        } else if (side(a) === "wild") {
           if (!this.wildAppeared) out.push({ text: `A wild ${a.split(": ")[1]} appeared!`, side: "wild", hp, maxHp: mhp, anim: "appear", species });
           this.wildAppeared = true;
         } else {
@@ -378,6 +435,11 @@ export class WildBattle {
     if (p && !p.fainted) this.participants.add(this.mons.get(p)!);
   }
 
+  /** Wild battles: whether this is over because the wild Pokémon fainted (for the room). */
+  get beaten(): boolean {
+    return this.battle?.p2.pokemon.every((p: any) => p.fainted) ?? false;
+  }
+
   private applyStored(p: any, m: Mon): void {
     if (m.currentHp === 0) {
       p.hp = 0;
@@ -417,9 +479,12 @@ export class WildBattle {
       events,
       view: {
         player: active && !this.done ? view(active, this.mons.get(active)!) : active ? view(active, this.mons.get(active)!) : null,
-        wild: view(b.p2.pokemon[0], this.wild),
+        wild: view(b.p2.active[0] ?? b.p2.pokemon[0], this.foes.get(b.p2.active[0] ?? b.p2.pokemon[0]) ?? this.wild),
         party,
         balls: await this.hooks.balls(),
+        trainer: this.trainer
+          ? { name: this.trainer.name, className: this.trainer.className, left: b.p2.pokemon.filter((p: any) => !p.fainted).length }
+          : null,
       },
       request,
       ...(result && { result }),

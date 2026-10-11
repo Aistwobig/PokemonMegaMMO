@@ -1,0 +1,5 @@
+{
+  "_note": "Trainers the server knows. Names, classes, teams and prize factors match the RomFS trainer tables (a/0/3/8 trainer data, a/0/4/0 teams; Austin = 37, Anna = 45; names in game text 21, classes in 20). Prize = money x 4 x the last Pokemon's level. model = overworld model (a/0/2/1).",
+  "austin": { "name": "Austin", "class": "Youngster", "model": "tr0100", "money": 6, "team": [{ "species": "zigzagoon", "level": 5 }] },
+  "anna": { "name": "Anna", "class": "Lass", "model": "tr0104", "money": 6, "team": [{ "species": "pikachu", "level": 5 }] }
+}

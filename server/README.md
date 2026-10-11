@@ -31,6 +31,7 @@ src/battle/pokemon.ts  generating Pokémon, stats, EXP curves, level-up moves, e
 src/battle/wild.ts     a wild battle: Showdown + wild AI, Poké Balls, running, EXP, messages
 src/battle/party.ts    party, PC and bag in Postgres; starters
 data/species.json      catch rates, EXP yields, growth rates (what Showdown's dex lacks)
+data/trainers.json     NPC trainers: name, class, overworld model, prize factor, team
 src/db/pool.ts         Postgres pool + transaction helper
 data/maps/*.json       map data: Vaniville has the real walkable tiles (importer/tools/make_map.py);
                        spawns, warps and the other maps are hand-written placeholders
@@ -48,6 +49,7 @@ HTTP on the same port (`http://localhost:2567`), JSON bodies:
 | `POST /auth/logout` | header `Authorization: Bearer <token>` | `204` |
 | `GET /auth/me` | header `Authorization: Bearer <token>` | `200 { trainer }` |
 | `GET /trainer/party` | Bearer | `200 { party: [{ species, name, level, hp, maxHp, status, moves }], items: { pokeball: n } }` |
+| `POST /trainer/party/swap` | `{ a, b }` (party slots), Bearer | `200 { party, items, money }` — reorder; slot 0 leads in battle |
 | `POST /trainer/starter` | `{ species }` (chespin/fennekin/froakie), Bearer | `201 { party, items }`; 409 if the trainer already has a Pokémon. Comes with 10 Poké Balls |
 
 `trainer` is `{ name, mapId, x, y, facing, appearance, introDone }`. `appearance` is `null` until character
@@ -92,6 +94,13 @@ Log in first, set the token on the SDK (`client.auth.token = token`), then join 
 | server → client | `warp` | `{ to, ticket, blackout? }` — leave this room, join `to` with `{ ticket }` |
 | server → client | `battleStart` / `battleUpdate` | `{ events, view, request, result? }` (see `src/battle/wild.ts`) |
 | server → client | `healed` | — walked into your front door; Mom healed the party |
+| server → client | `npcs` | on join: the map's trainers `[{ id, name, className, model, x, y, facing, beaten }]` |
+
+Trainers: maps list them under `trainers` (`{ id, x, y, facing, sight }`); their tiles are blocked.
+Walking into a trainer's line of sight (up to a wall) starts a battle, once per player: `battleStart`
+then also carries `trainer: { id, name, className, model, from, to }` (`to` = where they walk up to).
+No catching or running; EXP × 1.5; winning pays `money × 4 × last Pokémon's level` and sets the
+`beat:<id>` flag.
 
 Wild battles: stepping on tall grass (`G`) may start one if the party has a Pokémon that can fight.
 The room blocks walking until it ends. `events` are messages and HP changes to play back in order;
@@ -109,6 +118,7 @@ that keep the 3D world loaded across the warp see one seamless walk.
 
 ## Not done yet
 
-- Trainer battles, items other than Poké Balls, money, the PC UI, move relearning
+- Items other than Poké Balls, shops, the PC UI, move relearning, trainer dialogue
+- Only Route 2's two trainers so far (Youngster Austin, Lass Anna)
 - Encounter tables and catch rates are hand-written for the first areas; check them against the game
 - Redis (transfer tickets, rate limits and the online list are in memory, fine for one process)

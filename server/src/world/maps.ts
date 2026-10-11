@@ -16,6 +16,27 @@ export interface Warp {
   toY: number;
 }
 
+/** An NPC trainer on a map: they battle anyone who walks into their line of sight (once each). */
+export interface TrainerSpot {
+  id: string; // key in data/trainers.json
+  x: number;
+  y: number;
+  facing: Direction;
+  sight: number; // tiles they can see ahead
+}
+
+export interface TrainerDef {
+  name: string;
+  class: string;
+  model: string;
+  money: number;
+  team: { species: string; level: number }[];
+}
+
+export const TRAINERS: Record<string, TrainerDef> = JSON.parse(
+  readFileSync(join(import.meta.dirname, "../../data/trainers.json"), "utf8"),
+);
+
 export interface Encounter {
   species: string; // Showdown species id, e.g. "fletchling"
   minLevel: number;
@@ -30,6 +51,7 @@ export interface GameMap {
   tiles: string[];
   spawn: { x: number; y: number };
   heal?: { x: number; y: number }; // walking into this tile heals the party (the player's front door)
+  trainers?: TrainerSpot[]; // NPC trainers standing on this map (teams in data/trainers.json)
   warps: Warp[];
   encounterRate: number; // chance per step in grass, 0..1
   encounters: Encounter[];
@@ -56,7 +78,22 @@ export function tileAt(map: GameMap, x: number, y: number): string {
 }
 
 export function isWalkable(map: GameMap, x: number, y: number): boolean {
-  return tileAt(map, x, y) !== "#";
+  return tileAt(map, x, y) !== "#" && !map.trainers?.some((t) => t.x === x && t.y === y);
+}
+
+/** The trainer whose line of sight (up to a wall) covers this tile, and how far away they are. */
+export function trainerSeeing(map: GameMap, x: number, y: number, skip: (id: string) => boolean):
+  { spot: TrainerSpot; distance: number } | null {
+  for (const spot of map.trainers ?? []) {
+    if (skip(spot.id)) continue;
+    let tx = spot.x, ty = spot.y;
+    for (let d = 1; d <= spot.sight; d++) {
+      ({ x: tx, y: ty } = step(tx, ty, spot.facing));
+      if (tileAt(map, tx, ty) === "#") break;
+      if (tx === x && ty === y) return { spot, distance: d };
+    }
+  }
+  return null;
 }
 
 export function step(x: number, y: number, dir: Direction): { x: number; y: number } {

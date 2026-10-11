@@ -1,5 +1,6 @@
 extends CanvasLayer
-## Minimal in-world HUD: who you're logged in as. C changes your look, Esc logs out.
+## Minimal in-world HUD: who you're logged in as. P is the party (world.gd), C changes your look,
+## Esc logs out.
 
 const LOGIN_SCENE := "res://scenes/login.tscn"
 const CREATOR_SCENE := "res://scenes/character_creator.tscn"
@@ -7,7 +8,7 @@ const CREATOR_SCENE := "res://scenes/character_creator.tscn"
 
 func _ready() -> void:
 	var who: String = Session.trainer.get("name", "not logged in")
-	$Label.text = "%s  ·  C change look  ·  Esc log out" % who
+	$Label.text = "%s  ·  P Pokémon  ·  C change look  ·  Esc log out" % who
 
 
 func _unhandled_input(event: InputEvent) -> void:

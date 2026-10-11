@@ -30,6 +30,9 @@ var _teleport := false # the next warp jumps instead of walking (blacking out)
 var _battle: BattleScene
 var _busy := false # a battle, the starter choice or a message is on screen: no walking
 var _box: DialogueBox
+var _npcs := {} # trainer id -> NpcModel standing on the current map
+var _grass: Array[Node3D] = [] # tall grass tufts (hidden during battles, which happen "elsewhere" in X/Y)
+var _pending_npcs: Variant = null
 var _has_pokemon := true # until the server says otherwise; false shows the starter choice in Aquacorde
 ## Tests turn this off so stray key presses (the window takes focus while you type) can't move.
 var accept_input := true
@@ -42,6 +45,7 @@ func _ready() -> void:
 	_load_overworld(town.get_node("World"))
 	add_child(town)
 	_add_ground_collision(town)
+	_plant_tall_grass.call_deferred()
 	_camera = Camera3D.new()
 	_camera.fov = 30.0
 	_camera.far = 20000.0
@@ -85,11 +89,28 @@ func _on_message(type: Variant, data: Variant) -> void:
 			_warp(str(data.get("to", "")), str(data.get("ticket", "")))
 		"battleStart":
 			_start_battle(data)
+		"npcs":
+			_pending_npcs = data # placed once the room state (and its map origin) has arrived
 		"battleUpdate":
 			if _battle:
 				_battle.apply(data)
 		"healed":
 			_mom_heals()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_P and not _busy and accept_input:
+		get_viewport().set_input_as_handled()
+		open_party()
+
+
+## The party screen; walking waits until it's closed.
+func open_party() -> PartyMenu:
+	_busy = true
+	var menu := PartyMenu.new()
+	add_child(menu)
+	menu.closed.connect(func() -> void: _busy = false)
+	return menu
 
 
 ## Moves to the next map. Neighbouring overworld maps share one 3D world, so our trainer stays
@@ -101,9 +122,54 @@ func _warp(to: String, ticket: String) -> void:
 	for sid: String in _players:
 		_players[sid].queue_free()
 	_players.clear()
+	_show_npcs([])
 	_room = null
 	old.leave()
 	_join(to, ticket)
+
+
+## The map's NPC trainers, standing where the server says.
+func _show_npcs(list: Variant) -> void:
+	for n: Node in _npcs.values():
+		n.queue_free()
+	_npcs.clear()
+	if not (list is Array):
+		return
+	for t: Dictionary in list:
+		var npc := NpcModel.create(str(t.get("model", "")))
+		if npc == null:
+			continue
+		add_child(npc)
+		npc.position = _tile_to_world(int(t.x), int(t.y))
+		npc.rotation_degrees.y = FACING_YAW.get(t.get("facing", "down"), 0.0)
+		npc.play_motion(0)
+		_npcs[t.id] = npc
+
+
+## A trainer spotted us: "!" over their head, they walk up, then the battle.
+func _trainer_walks_up(info: Dictionary) -> void:
+	var npc: NpcModel = _npcs.get(info.get("id", ""))
+	if npc == null:
+		return
+	var mark := Label3D.new()
+	mark.text = "!"
+	mark.font_size = 96
+	mark.outline_size = 16
+	mark.modulate = Color(1, 0.3, 0.25)
+	mark.pixel_size = 0.3
+	mark.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	mark.no_depth_test = true
+	mark.position.y = 62
+	npc.add_child(mark)
+	await get_tree().create_timer(0.8).timeout
+	mark.queue_free()
+	var to: Dictionary = info.get("to", {})
+	var target := _tile_to_world(int(to.get("x", 0)), int(to.get("y", 0)))
+	var steps := maxi(1, int(npc.position.distance_to(target) / TILE))
+	npc.play_motion(2)
+	await create_tween().tween_property(npc, "position", target, STEP_TIME * steps).finished
+	npc.play_motion(0)
+	await get_tree().create_timer(0.3).timeout
 
 
 func _start_battle(update: Dictionary) -> void:
@@ -111,9 +177,15 @@ func _start_battle(update: Dictionary) -> void:
 	if me == null:
 		return
 	_busy = true
+	if update.has("trainer"):
+		await _trainer_walks_up(update.trainer)
 	# Trainers step out of the picture during a battle, as in X/Y (the camera stands where we were).
 	for rt: RemoteTrainer in _players.values():
 		rt.visible = false
+	for n: Node3D in _npcs.values():
+		n.visible = false
+	for g in _grass:
+		g.visible = false
 	_battle = BattleScene.new(me, update, func(action: Dictionary) -> void:
 		if _room:
 			_room.send_message("battle", action))
@@ -122,6 +194,10 @@ func _start_battle(update: Dictionary) -> void:
 	_battle = null
 	for rt: RemoteTrainer in _players.values():
 		rt.visible = true
+	for n: Node3D in _npcs.values():
+		n.visible = true
+	for g in _grass:
+		g.visible = true
 	_camera.make_current()
 	var fade := ScreenFade.new(Color.BLACK)
 	add_child(fade)
@@ -188,6 +264,9 @@ func _sync_players() -> void:
 		return
 	if int(state.get("originX", -1)) >= 0:
 		_origin = Vector2i(int(state.originX), int(state.originY))
+	if _pending_npcs != null:
+		_show_npcs(_pending_npcs)
+		_pending_npcs = null
 	var seen := {}
 	for sid: String in state.players:
 		var p: Dictionary = state.players[sid]
@@ -298,6 +377,41 @@ func _load_overworld(world: Node3D) -> void:
 		var c := Vector2i(int(m.get_string(1)), int(m.get_string(2))) - ORIGIN_CHUNK
 		chunk.position = Vector3(c.x * 720.0, 0, c.y * 720.0)
 		world.add_child(chunk)
+
+
+## X/Y draws tall grass separately from the map: a swaying clump (a/2/3/0, "grass00") on every
+## tall-grass tile (0x20002004 in the chunk's tile grid).
+const GRASS_TILE := 0x20002004
+
+func _plant_tall_grass() -> void:
+	if not DirAccess.dir_exists_absolute(OVERWORLD):
+		return
+	await get_tree().physics_frame # the ground collision must be in the physics world first
+	var pattern := RegEx.create_from_string("^map01_(\\d+)_(\\d+)\\.tiles\\.json$")
+	var planted := 0
+	for file in DirAccess.get_files_at(OVERWORLD):
+		var m := pattern.search(file)
+		if m == null:
+			continue
+		var grid := RoomMap.load_tiles(OVERWORLD + file)
+		var chunk := Vector2i(int(m.get_string(1)), int(m.get_string(2)))
+		for i in grid.tiles.size():
+			if grid.tiles[i] != GRASS_TILE:
+				continue
+			var g := chunk * 40 + Vector2i(i % grid.width, i / grid.width)
+			var tuft := NpcModel.create("grass00")
+			if tuft == null:
+				return # not exported yet (importer/README.md)
+			add_child(tuft)
+			var base := ORIGIN_CHUNK * 40
+			var x := (g.x - base.x) * TILE - 360.0 + TILE / 2
+			var z := (g.y - base.y) * TILE - 360.0 + TILE / 2
+			tuft.position = Vector3(x, _ground_height(x, z, null), z)
+			tuft.rotation_degrees.y = (g.x * 7 + g.y * 13) % 4 * 90.0 # a little variety
+			tuft.play_motion(0)
+			tuft.player.seek(randf() * 1.0) # don't all sway in step
+			_grass.append(tuft)
+			planted += 1
 
 
 ## Collision shapes from the town model, for the height probe.

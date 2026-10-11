@@ -2,11 +2,13 @@ import { Room, ServerError, type AuthContext, type Client } from "colyseus";
 import { MapState, Player } from "./state.ts";
 import { pool } from "../db/pool.ts";
 import { findSession, type SessionTrainer } from "../auth/sessions.ts";
-import { type Direction, type GameMap, isWalkable, rollEncounter, step, tileAt, warpAt } from "../world/maps.ts";
+import {
+  type Direction, type GameMap, isWalkable, rollEncounter, step, tileAt, TRAINERS, trainerSeeing, warpAt,
+} from "../world/maps.ts";
 import { claimOnline, releaseOnline } from "../world/online.ts";
 import { issueTicket, redeemTicket, type Transfer } from "../world/transfers.ts";
 import { healParty, itemCount, loadParty, saveParty, storeCaught, useItem } from "../battle/party.ts";
-import { generate } from "../battle/pokemon.ts";
+import { generate, type Mon } from "../battle/pokemon.ts";
 import { BALLS, WildBattle, type Action, type Update } from "../battle/wild.ts";
 
 // One room type per map (registered in index.ts). If a map fills up, Colyseus opens
@@ -28,7 +30,8 @@ export class MapRoom extends Room<{ state: MapState }> {
   maxClients = 100;
   private map!: GameMap;
   private lastStepAt = new Map<string, number>();
-  private battles = new Map<string, WildBattle>(); // sessionId → the wild battle they're in
+  private battles = new Map<string, WildBattle>(); // sessionId → the battle they're in
+  private trainerBattles = new Map<string, string>(); // sessionId → trainer id, for trainer battles
   private starting = new Set<string>(); // a battle is being set up (loading the party)
   private warping = new Set<string>();
 
@@ -65,6 +68,12 @@ export class MapRoom extends Room<{ state: MapState }> {
       facing: transfer?.facing ?? trainer.facing,
       look: trainer.appearance ? JSON.stringify(trainer.appearance) : "",
     }));
+    // The NPC trainers on this map, and which this player has already beaten.
+    client.send("npcs", (this.map.trainers ?? []).map((t) => {
+      const def = TRAINERS[t.id];
+      return { id: t.id, name: def?.name, className: def?.class, model: def?.model, x: t.x, y: t.y,
+        facing: t.facing, beaten: trainer.flags[`beat:${t.id}`] === true };
+    }));
   }
 
   async onLeave(client: Client) {
@@ -75,6 +84,7 @@ export class MapRoom extends Room<{ state: MapState }> {
     // Leaving mid-battle (disconnect, closing the game) counts as running away; damage is kept.
     const battle = this.battles.get(client.sessionId);
     this.battles.delete(client.sessionId);
+    this.trainerBattles.delete(client.sessionId);
     if (battle) await saveParty(auth.trainer.trainerId, battle.party);
     releaseOnline(auth.trainer.trainerId, client);
     if (this.warping.delete(client.sessionId) || !player) return; // the warp already saved the destination
@@ -122,7 +132,13 @@ export class MapRoom extends Room<{ state: MapState }> {
     if (tileAt(this.map, next.x, next.y) === "G") {
       const wild = rollEncounter(this.map);
       if (wild) await this.startBattle(client, wild);
+      if (wild) return;
     }
+
+    // Walked into a trainer's line of sight.
+    const { trainer } = client.auth as AuthData;
+    const seen = trainerSeeing(this.map, next.x, next.y, (id) => trainer.flags[`beat:${id}`] === true);
+    if (seen) await this.startTrainerBattle(client, seen.spot.id, seen.distance);
   }
 
   private inBattle(client: Client): boolean {
@@ -137,15 +153,48 @@ export class MapRoom extends Room<{ state: MapState }> {
     try {
       const party = await loadParty(trainer.trainerId);
       if (!party.some((m) => m.currentHp !== 0)) return; // no Pokémon that can fight: wild ones stay away
-      const battle = new WildBattle(party, generate(wild.species, wild.level), {
-        playerName: trainer.name,
-        useBall: (item) => useItem(trainer.trainerId, item),
-        balls: async () => Object.fromEntries(await Promise.all(
-          Object.keys(BALLS).map(async (b) => [b, await itemCount(trainer.trainerId, b)]))),
-      });
+      const battle = new WildBattle(party, [generate(wild.species, wild.level)], this.hooks(trainer));
       const update = await battle.start();
       this.battles.set(client.sessionId, battle);
       client.send("battleStart", update);
+    } finally {
+      this.starting.delete(client.sessionId);
+    }
+  }
+
+  private hooks(trainer: SessionTrainer) {
+    return {
+      playerName: trainer.name,
+      useBall: (item: string) => useItem(trainer.trainerId, item),
+      balls: async () => Object.fromEntries(await Promise.all(
+        Object.keys(BALLS).map(async (b) => [b, await itemCount(trainer.trainerId, b)]))),
+    };
+  }
+
+  /** A trainer spotted the player: they walk up and battle. Their team comes from data/trainers.json. */
+  private async startTrainerBattle(client: Client, id: string, distance: number) {
+    const { trainer } = client.auth as AuthData;
+    const def = TRAINERS[id];
+    const spot = this.map.trainers?.find((t) => t.id === id);
+    if (!def || !spot) return;
+    this.starting.add(client.sessionId);
+    try {
+      const party = await loadParty(trainer.trainerId);
+      if (!party.some((m) => m.currentHp !== 0)) return; // trainers don't battle someone without Pokémon
+      const team: Mon[] = def.team.map((t) => {
+        const m = generate(t.species, t.level);
+        m.ivs = m.ivs.map(() => 0); // the team table's IV byte is 0 for these trainers
+        return m;
+      });
+      const battle = new WildBattle(party, team, this.hooks(trainer), { name: def.name, className: def.class, money: def.money });
+      this.trainerBattles.set(client.sessionId, id);
+      const update = await battle.start();
+      this.battles.set(client.sessionId, battle);
+      // The trainer walks up to the tile in front of the player (distance - 1 steps).
+      let to = { x: spot.x, y: spot.y };
+      for (let i = 1; i < distance; i++) to = step(to.x, to.y, spot.facing);
+      client.send("battleStart", { ...update, trainer: { id, name: def.name, className: def.class, model: def.model,
+        from: { x: spot.x, y: spot.y }, to, facing: spot.facing } });
     } finally {
       this.starting.delete(client.sessionId);
     }
@@ -162,13 +211,22 @@ export class MapRoom extends Room<{ state: MapState }> {
       console.error("battle action failed:", err);
       return;
     }
-    if (update.result) await this.endBattle(client, battle, update.result);
+    if (update.result) await this.endBattle(client, battle, update.result, update.prize ?? 0);
     client.send("battleUpdate", update);
   }
 
-  private async endBattle(client: Client, battle: WildBattle, result: NonNullable<Update["result"]>) {
+  private async endBattle(client: Client, battle: WildBattle, result: NonNullable<Update["result"]>, prize: number) {
     const { trainer } = client.auth as AuthData;
     this.battles.delete(client.sessionId);
+    const trainerId = this.trainerBattles.get(client.sessionId);
+    this.trainerBattles.delete(client.sessionId);
+    if (trainerId && result === "win") {
+      // Beaten once, never again; the prize goes to the player's money.
+      await pool.query(
+        "UPDATE trainers SET flags = flags || jsonb_build_object($2::text, true), money = money + $3 WHERE id = $1",
+        [trainer.trainerId, `beat:${trainerId}`, prize]);
+      trainer.flags = { ...trainer.flags, [`beat:${trainerId}`]: true };
+    }
     await saveParty(trainer.trainerId, battle.party);
     if (result === "caught") await storeCaught(trainer.trainerId, battle.wild, battle.caughtBall ?? "pokeball", this.map.id);
     if (result === "lost") await this.blackOut(client);

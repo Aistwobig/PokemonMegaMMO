@@ -95,6 +95,14 @@ func get_party() -> Dictionary:
 	return res.data if res.code == 200 else {}
 
 
+## Swaps two party slots. Returns "" or an error message.
+func swap_party(a: int, b: int) -> String:
+	var res := await _request(HTTPClient.METHOD_POST, "/trainer/party/swap", {a = a, b = b})
+	if res.code == 200:
+		return ""
+	return res.data.get("error", "Something went wrong (error %d)." % res.code)
+
+
 ## Picks the first Pokémon (chespin, fennekin or froakie). Returns "" or an error message.
 func choose_starter(species: String) -> String:
 	var res := await _request(HTTPClient.METHOD_POST, "/trainer/starter", {species = species})

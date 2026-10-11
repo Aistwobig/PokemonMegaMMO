@@ -124,12 +124,22 @@ func _play_event(e: Dictionary) -> void:
 		"evolve":
 			if _mons.player:
 				_spawn("player", str(e.species))
-	if e.has("hp") and side != "":
-		_set_hp(side, int(e.hp), int(e.get("maxHp", 0)))
+	if e.get("hp") != null and side != "":
+		# maxHp is missing when the Pokémon fainted ("0 fnt")
+		_set_hp(side, _num(e.hp), _num(e.get("maxHp")))
 	if e.has("text"):
 		await _say(str(e.text))
 	elif str(e.get("anim", "")) in ["hit", "attack"]:
 		await _wait(0.35)
+
+
+## A number from the server's JSON (which may also be null or text).
+static func _num(v: Variant) -> int:
+	if v is int or v is float:
+		return int(v)
+	if v is String:
+		return (v as String).to_int()
+	return 0
 
 
 func _finish(result: String) -> void:
@@ -209,10 +219,10 @@ func _flash(side: String) -> void:
 	if mon == null:
 		return
 	var t := create_tween()
-	for i in 3:
-		t.tween_callback(func() -> void: mon.visible = false)
+	for i in 3: # the Pokémon may be swapped out (and freed) mid-flash
+		t.tween_callback(func() -> void: if is_instance_valid(mon): mon.visible = false)
 		t.tween_interval(0.06)
-		t.tween_callback(func() -> void: mon.visible = true)
+		t.tween_callback(func() -> void: if is_instance_valid(mon): mon.visible = true)
 		t.tween_interval(0.06)
 
 
@@ -461,7 +471,8 @@ func _show_commands() -> void:
 	_button(grid, "FIGHT", Color(0.85, 0.25, 0.25), _show_moves)
 	_button(grid, "BAG", Color(0.9, 0.65, 0.15), _show_bag)
 	_button(grid, "POKéMON", Color(0.25, 0.7, 0.35), _show_party.bind(false))
-	_button(grid, "RUN", Color(0.25, 0.45, 0.85), _choose.bind({"type": "run"}))
+	var vs_trainer: bool = _update.get("view", {}).get("trainer") is Dictionary
+	_button(grid, "RUN", Color(0.25, 0.45, 0.85), _choose.bind({"type": "run"}), not vs_trainer)
 
 
 func _show_moves() -> void:
@@ -476,6 +487,8 @@ func _show_moves() -> void:
 
 func _show_bag() -> void:
 	var grid := _clear_menu()
+	if _update.get("view", {}).get("trainer") is Dictionary:
+		_message.text = "You can't catch a Trainer's Pokémon!"
 	var balls: Dictionary = _update.get("view", {}).get("balls", {})
 	var any := false
 	for id: String in BALL_NAMES:
@@ -511,5 +524,7 @@ func _choose(action: Dictionary) -> void:
 const POKEDEX_HEIGHTS := {
 	"chespin": 0.4, "quilladin": 0.7, "fennekin": 0.4, "braixen": 1.0, "froakie": 0.3, "frogadier": 0.6,
 	"fletchling": 0.3, "fletchinder": 0.7, "bunnelby": 0.4, "diggersby": 1.0, "scatterbug": 0.3,
-	"spewpa": 0.3, "zigzagoon": 0.4, "linoone": 0.5,
+	"spewpa": 0.3, "zigzagoon": 0.4, "linoone": 0.5, "pikachu": 0.4, "raichu": 0.8, "pidgey": 0.3,
+	"pidgeotto": 1.1, "caterpie": 0.3, "metapod": 0.7, "weedle": 0.3, "kakuna": 0.6, "vivillon": 1.2,
+	"talonflame": 1.2, "chesnaught": 1.6, "delphox": 1.5, "greninja": 1.5,
 }

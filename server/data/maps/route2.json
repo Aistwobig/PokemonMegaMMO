@@ -48,6 +48,7 @@
     "##################.....#################"
   ],
   "spawn": {"x": 20, "y": 32},
+  "trainers": [{"id": "austin", "x": 19, "y": 3, "facing": "down", "sight": 4}, {"id": "anna", "x": 16, "y": 16, "facing": "right", "sight": 5}],
   "warps": [
     {"x": 18, "y": 41, "to": "aquacorde", "toX": 18, "toY": 1},
     {"x": 19, "y": 41, "to": "aquacorde", "toX": 19, "toY": 1},

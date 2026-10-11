@@ -59,6 +59,23 @@ py -3 tools/pokemon.py R C/pokemon <BchTool.exe> 650:chespin 651:quilladin 653:f
 
 Battle motions: 0 idle, 1 appear, 8 physical attack, 12 special attack, 16 hit, 17 faint.
 
+**Tall grass** (`a/2/3/0`, a "TM" pack: grass00 = normal tall grass, 01–03 with flowers, 04 long
+grass; each model has swaying animations). The client plants grass00 on every `0x20002004` tile:
+
+```
+py -3 tools/garc.py split R/a/2/3/0 0 work/grass
+BchTool export C/npc/grass00 grass00 work/grass/7.bch work/grass/8.bch
+```
+
+Also export the overworld chunks' tile grids next to their models (the client reads them):
+`py -3 tools/tiles.py json work/grN/0.bin C/maps/map01/map01_XX_YY.tiles.json`.
+
+**Trainers.** Trainer data is `a/0/3/8` (20 bytes: format, class, ..., count; prize factor at byte 17)
+and teams `a/0/4/0` (8 bytes per Pokémon: IV, ability, u16 level, u16 species, u16 form; +8 with
+moves, +2 with items). Names: game text 21, classes: 20. `server/data/trainers.json` lists the ones
+in use. Overworld trainer models (a/0/2/1): tr0100 Youngster, tr0104 Lass — export like the story
+characters.
+
 **Story characters.** For each id N (Sycamore = 6, Mom = 7):
 
 ```

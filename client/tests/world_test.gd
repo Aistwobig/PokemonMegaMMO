@@ -57,6 +57,8 @@ func _ready() -> void:
 		if stop[0] == "aquacorde":
 			await _pick_starter(world, shots)
 	await _battle(world, shots)
+	await _trainer_battle(world, shots)
+	await _party_menu(world, shots)
 	print("all checks passed" if _failures == 0 else "%d check(s) failed" % _failures)
 	get_tree().quit(1 if _failures else 0)
 
@@ -155,6 +157,75 @@ func _battle(world: Node, shots: String) -> void:
 	var party: Dictionary = await Session.get_party()
 	if result == "caught":
 		_check("caught Pokémon joins the party", party.get("party", []).size() == 2, str(party.get("party", [])))
+
+
+## North to Lass Anna's row (she looks right from (16, 16)); wild battles on the way are run from.
+func _trainer_battle(world: Node, shots: String) -> void:
+	_check("trainers stand on Route 2", world._npcs.has("anna") and world._npcs.has("austin"), str(world._npcs.keys()))
+	var battle: BattleScene = null
+	for i in 40:
+		await _walk(world, "up", 1)
+		await _wait(0.4)
+		if world._battle:
+			var b: BattleScene = world._battle
+			if b._update.get("view", {}).get("trainer") is Dictionary:
+				battle = b
+				break
+			await _run_away(b)
+		elif world._busy:
+			await _wait(1.0) # the trainer is walking up
+			await _shot(shots, "12_spotted")
+	_check("Lass Anna battles us", battle != null)
+	if battle == null:
+		return
+	await _until_menu(battle)
+	await _shot(shots, "13_trainer_battle")
+	var ended := [""]
+	battle.finished.connect(func(r: String) -> void: ended[0] = r)
+	for i in 30:
+		if ended[0] != "" or not is_instance_valid(battle):
+			break
+		var req: Variant = battle._update.get("request")
+		if req is Dictionary and req.kind == "switch":
+			for p: Dictionary in battle._update.view.party:
+				if int(p.hp) > 0:
+					battle._choose({"type": "switch", "slot": int(p.slot)})
+					break
+		else:
+			battle._choose({"type": "move", "index": _attack_index(battle)})
+		await _wait(0.5)
+		await _until_menu(battle)
+	print("       trainer battle: ", ended[0], " — now in ", world._room.state.get("mapId", "?"), " at ", _me(world))
+	_check("trainer battle ends", ended[0] != "")
+	await _wait(1.5)
+
+
+func _run_away(battle: BattleScene) -> void:
+	var ended := [""]
+	battle.finished.connect(func(r: String) -> void: ended[0] = r)
+	for i in 10:
+		if ended[0] != "" or not is_instance_valid(battle):
+			return
+		await _until_menu(battle)
+		if is_instance_valid(battle) and battle._menu.visible:
+			battle._choose({"type": "run"})
+		await _wait(0.6)
+	await _wait(1.0)
+
+
+func _party_menu(world: Node, shots: String) -> void:
+	await _wait(1.0)
+	print("       party menu in ", world._room.state.get("mapId", "?"), " at ", _me(world))
+	var menu: PartyMenu = world.open_party()
+	await _wait(1.5)
+	await _shot(shots, "14_party")
+	var before: Array = menu._party.map(func(p: Dictionary) -> String: return p.species)
+	menu._pick(0)
+	await menu._pick(1)
+	await _wait(1.0)
+	var after: Array = menu._party.map(func(p: Dictionary) -> String: return p.species)
+	_check("party menu swaps the first two", before.size() >= 2 and after[0] == before[1] and after[1] == before[0], "%s -> %s" % [before, after])
+	menu.close_menu()
 
 
 func _attack_index(battle: BattleScene) -> int:

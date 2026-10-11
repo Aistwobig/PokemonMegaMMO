@@ -2,7 +2,7 @@ import { randomInt } from "node:crypto";
 import express, { type Request, type Response } from "express";
 import { pool, transaction } from "../db/pool.ts";
 import { LookError, validateLook } from "../world/appearance.ts";
-import { giveStarter, partySummary, STARTERS } from "../battle/party.ts";
+import { giveStarter, partySummary, STARTERS, swapParty } from "../battle/party.ts";
 import type { GameMap } from "../world/maps.ts";
 import { DUMMY_HASH, hashPassword, verifyPassword } from "./passwords.ts";
 import { RateLimiter } from "./rateLimit.ts";
@@ -18,6 +18,7 @@ import { createSession, deleteSession, findSession, type SessionTrainer } from "
 //   POST /trainer/story    { event }    (Bearer)               → 200 { trainer }   (a cutscene seen)
 //   GET  /trainer/party                 (Bearer)               → 200 { party, items }
 //   POST /trainer/starter  { species }  (Bearer)               → 201 { party, items }  (once)
+//   POST /trainer/party/swap { a, b }   (Bearer)               → 200 { party, items }  (reorder)
 
 const START_MAP = "vaniville";
 // Cutscenes the client plays by itself and only tells the server about. Nothing that gives items or
@@ -131,6 +132,16 @@ export function authRoutes(app: express.Application, maps: Map<string, GameMap>)
   app.get("/trainer/party", handle(async (req, res) => {
     const session = await findSession(bearer(req));
     if (!session) throw new HttpError(401, "Not logged in.");
+    res.json(await partySummary(session.trainerId));
+  }));
+
+  app.post("/trainer/party/swap", handle(async (req, res) => {
+    const session = await findSession(bearer(req));
+    if (!session) throw new HttpError(401, "Not logged in.");
+    const a = req.body?.a, b = req.body?.b;
+    const slot = (n: unknown) => Number.isInteger(n) && (n as number) >= 0 && (n as number) < 6;
+    if (!slot(a) || !slot(b) || a === b) throw new HttpError(400, "Pick two different party slots.");
+    if (!(await swapParty(session.trainerId, a, b))) throw new HttpError(400, "Both slots need a Pokémon.");
     res.json(await partySummary(session.trainerId));
   }));
 

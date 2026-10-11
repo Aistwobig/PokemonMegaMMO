@@ -69,6 +69,7 @@ static func from_look(new_look: Dictionary, load_motions := true) -> TrainerMode
 	if load_motions:
 		t.player.add_animation_library("", _motion_library(gender))
 		t.motions = _motion_lists[gender]
+	Outline.apply(t)
 	return t
 
 
@@ -185,11 +186,27 @@ static func _recolor(mat: StandardMaterial3D, entry: Dictionary, color: String, 
 
 
 static func _fix_transparency(mat: StandardMaterial3D) -> void:
-	# Hair strands and lace edges are cut out with the texture's alpha.
-	if mat.albedo_texture and mat.albedo_texture.has_alpha():
+	# Hair strands, lace edges and grass blades are cut out with the texture's alpha.
+	if mat.albedo_texture and _has_alpha(mat.albedo_texture):
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 		mat.alpha_scissor_threshold = 0.5
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+
+
+static var _alpha_cache := {}
+
+## Whether a texture really uses its alpha channel. Texture2D.has_alpha() can say no for imported
+## (compressed) textures that do, so look at the pixels once per texture.
+static func _has_alpha(tex: Texture2D) -> bool:
+	if tex.has_alpha():
+		return true
+	var key := tex.resource_path
+	if not _alpha_cache.has(key):
+		var img := tex.get_image()
+		if img and img.is_compressed():
+			img.decompress()
+		_alpha_cache[key] = img != null and img.detect_alpha() != Image.ALPHA_NONE
+	return _alpha_cache[key]
 
 
 ## Godot's DAE import keeps SPICA's bone weights but drops the skin binding. The meshes are modeled

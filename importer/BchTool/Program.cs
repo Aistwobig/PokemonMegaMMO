@@ -2,6 +2,7 @@
 //
 //   BchTool info   <file.bch>...                    list models, materials, textures, animations
 //   BchTool export <outDir> <name> <file.bch>... [--motions <motionpack>]
+//       (skeletal animations inside the given BCH files are written as <name>_motNN.dae too)
 //       merge the files and write <name>.dae + textures. With --motions, also write each motion of
 //       a GF motion pack (X/Y overworld characters, the 2nd file of an "MM" pack) as
 //       <name>_motNN.dae: the skeleton plus one animation, no meshes.
@@ -116,6 +117,14 @@ static class Program
         if (missing.Count > 0) Console.WriteLine("  textures not found: " + string.Join(", ", missing));
 
         if (motions != null) ExportMotions(scene, outDir, name, motions);
+        else if (scene.SkeletalAnimations.Count > 0)
+        {
+            // Animations passed as BCH files (e.g. the tall grass's swaying): one file each, like motions.
+            target.ClearMeshes();
+            for (int i = 0; i < scene.SkeletalAnimations.Count; i++)
+                new DAE(scene, 0, i).Save(Path.Combine(outDir, $"{name}_mot{i:D2}.dae"));
+            Console.WriteLine($"{scene.SkeletalAnimations.Count} animation(s) → {name}_motNN.dae");
+        }
         return 0;
     }
 

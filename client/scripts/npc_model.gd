@@ -43,6 +43,7 @@ static func create(npc_id: String, folder_format := FOLDER) -> NpcModel:
 	model.add_child(n.player)
 	n.player.root_node = NodePath("..")
 	n.player.add_animation_library("", _motions(npc_id, folder))
+	Outline.apply(n)
 	return n
 
 
@@ -64,6 +65,8 @@ static func _transformed(mat: StandardMaterial3D, info: Dictionary) -> Material:
 		return copy
 	var sm := ShaderMaterial.new()
 	sm.shader = UV_SHADER
+	if TrainerModel._has_alpha(mat.albedo_texture):
+		sm.set_meta("cutout", true) # see-through parts (grass blades, fur tips): no outline hull
 	sm.set_shader_parameter("albedo_tex", mat.albedo_texture)
 	sm.set_shader_parameter("uv_m", Vector4(m[0], m[1], m[2], m[3]))
 	sm.set_shader_parameter("uv_t", Vector2(m[4], m[5]))

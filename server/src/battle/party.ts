@@ -1,6 +1,6 @@
 import type pg from "pg";
 import { pool, transaction } from "../db/pool.ts";
-import { generate, hp, maxHp, speciesName, type Mon } from "./pokemon.ts";
+import { dex, expForLevel, extra, generate, hp, maxHp, speciesName, stat, type Mon } from "./pokemon.ts";
 
 // Reading and writing a trainer's Pokémon and bag.
 
@@ -28,10 +28,15 @@ export async function loadParty(trainerId: string, db: Db = pool): Promise<Mon[]
 export async function partySummary(trainerId: string) {
   const party = await loadParty(trainerId);
   const { rows } = await pool.query("SELECT item, quantity FROM inventory WHERE trainer_id = $1", [trainerId]);
+  const money = await pool.query("SELECT money FROM trainers WHERE id = $1", [trainerId]);
   return {
+    money: money.rows[0]?.money ?? 0,
     party: party.map((m) => ({
-      species: m.species, name: m.nickname ?? speciesName(m.species), level: m.level, gender: m.gender,
-      shiny: m.shiny, hp: hp(m), maxHp: maxHp(m), status: m.status, moves: m.moves,
+      slot: m.slot, species: m.species, name: m.nickname ?? speciesName(m.species), level: m.level, gender: m.gender,
+      shiny: m.shiny, hp: hp(m), maxHp: maxHp(m), status: m.status, moves: m.moves.map((id) => dex.moves.get(id).name),
+      nature: dex.natures.get(m.nature).name, ability: dex.abilities.get(m.ability).name, exp: m.exp,
+      nextLevelExp: m.level < 100 ? expForLevel(extra(m.species).growth, m.level + 1) : m.exp,
+      stats: { atk: stat(m, "atk"), def: stat(m, "def"), spa: stat(m, "spa"), spd: stat(m, "spd"), spe: stat(m, "spe") },
     })),
     items: Object.fromEntries(rows.map((r) => [r.item, r.quantity])),
   };
@@ -89,6 +94,23 @@ async function insert(db: Db, trainerId: string, m: Mon, location: string, box: 
       m.ivs, m.evs, m.moves, m.currentHp, m.status, location, box, slot, ball, mapId],
   );
   return String(rows[0].id);
+}
+
+/** Swaps two party slots (reordering; slot 0 leads in battle). False if either slot is empty. */
+export async function swapParty(trainerId: string, a: number, b: number): Promise<boolean> {
+  return transaction(async (db) => {
+    const { rows } = await db.query(
+      "SELECT id, slot FROM pokemon WHERE owner_id = $1 AND location = 'party' AND slot = ANY($2) FOR UPDATE",
+      [trainerId, [a, b]]);
+    if (rows.length !== 2) return false;
+    const first = rows.find((r) => r.slot === a)!;
+    const second = rows.find((r) => r.slot === b)!;
+    // Positions are unique, so park one in a spot no real box uses while the other moves.
+    await db.query("UPDATE pokemon SET location = 'box', box = -1, slot = 0 WHERE id = $1", [first.id]);
+    await db.query("UPDATE pokemon SET slot = $2 WHERE id = $1", [second.id, a]);
+    await db.query("UPDATE pokemon SET location = 'party', box = NULL, slot = $2 WHERE id = $1", [first.id, b]);
+    return true;
+  });
 }
 
 /** Saves what a battle changed: HP, status, EXP, level, EVs, moves and evolutions. */
