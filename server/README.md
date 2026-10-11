@@ -2,6 +2,8 @@
 
 Authoritative game server: Colyseus rooms, Showdown battle sim, Postgres.
 
+Hosting for other players (firewall, Tailscale, TLS, backups): `../docs/hosting.md`.
+
 ## Commands
 
 ```

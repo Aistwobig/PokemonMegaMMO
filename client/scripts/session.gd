@@ -132,6 +132,24 @@ func _accept(res: Dictionary, remember: bool) -> String:
 	return res.data.get("error", "Something went wrong (error %d)." % res.code)
 
 
+## Points the game at another server: "192.168.1.20", "myserver.example:2567" or a full URL.
+## The port defaults to 2567. Logs out of the old server (tokens only work where they were made).
+func set_server(address: String) -> void:
+	var a := address.strip_edges()
+	if a == "":
+		return
+	if not a.begins_with("http://") and not a.begins_with("https://"):
+		a = "http://" + a
+	var host := a.split("://")[1]
+	if not ":" in host:
+		a += ":2567"
+	a = a.trim_suffix("/")
+	if a == server_url:
+		return
+	server_url = a
+	_set_session("", {}, false)
+
+
 func _set_session(new_token: String, new_trainer: Dictionary, remember: bool) -> void:
 	token = new_token
 	trainer = new_trainer

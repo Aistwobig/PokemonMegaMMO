@@ -5,10 +5,11 @@ services:
       POSTGRES_USER: game
       POSTGRES_PASSWORD: devpassword
       POSTGRES_DB: pokemmo
-    ports: ["5432:5432"]
+    # Only this PC can reach the database (the game server); never expose it to players.
+    ports: ["127.0.0.1:5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
   redis:
     image: redis:7
-    ports: ["6379:6379"]
+    ports: ["127.0.0.1:6379:6379"]
 volumes:
   pgdata:

@@ -3,7 +3,9 @@
 Turns the player's own Pokémon X RomFS into the client's asset cache (`client/asset-cache/`,
 gitignored). Nothing produced here may be committed or shared.
 
-For now these are manual steps; they become one `import` command later.
+**One command does it all:** `BchTool import <romfs> <client/asset-cache>` (about 20 seconds; the
+code is `BchTool/Importer.cs`). Players get it in the package as `Import.bat`. The steps below are
+what it does, and how to redo one by hand with the Python tools while working on the importer.
 
 ## Tools
 

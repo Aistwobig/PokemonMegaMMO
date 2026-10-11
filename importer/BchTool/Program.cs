@@ -1,5 +1,6 @@
  // BchTool: converts Pokémon X BCH files to DAE + PNG using SPICA (public domain).
 //
+//   BchTool import <romfs> <assetCache>              everything the client needs, in one go (Importer.cs)
 //   BchTool info   <file.bch>...                    list models, materials, textures, animations
 //   BchTool export <outDir> <name> <file.bch>... [--motions <motionpack>]
 //       (skeletal animations inside the given BCH files are written as <name>_motNN.dae too)
@@ -38,7 +39,8 @@ static class Program
             if (args.Length >= 2 && args[0] == "info") return Info(args.Skip(1));
             if (args.Length >= 4 && args[0] == "export") return Export(args[1], args[2], args.Skip(3).ToList());
             if (args.Length >= 3 && args[0] == "parts") return Parts(args[1], args.Skip(2).ToList());
-            Console.Error.WriteLine("usage: BchTool info <file.bch>... | export <outDir> <name> <file.bch>... | parts <outDir> <base.bch> <part.bch>...");
+            if (args.Length >= 1 && args[0] == "import") return Importer.Run(args.Skip(1).ToList());
+            Console.Error.WriteLine("usage: BchTool info <file.bch>... | export <outDir> <name> <file.bch>... | parts <outDir> <base.bch> <part.bch>... | import <romfs> <assetCache>");
             return 2;
         }
         catch (Exception e)
@@ -71,7 +73,7 @@ static class Program
         return 0;
     }
 
-    static int Export(string outDir, string name, List<string> files)
+    internal static int Export(string outDir, string name, List<string> files)
     {
         string motions = null;
         int flag = files.IndexOf("--motions");
@@ -128,7 +130,7 @@ static class Program
         return 0;
     }
 
-    static int Parts(string outDir, List<string> args)
+    internal static int Parts(string outDir, List<string> args)
     {
         string motions = TakeOption(args, "--motions", 1).FirstOrDefault();
         List<string> textureFiles = TakeOption(args, "--textures", int.MaxValue);

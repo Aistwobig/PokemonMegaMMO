@@ -36,7 +36,7 @@ func _ready() -> void:
 	_submit.pressed.connect(submit)
 	for field: LineEdit in [_username, _password, _confirm, _trainer_name]:
 		field.text_submitted.connect(func(_t: String) -> void: submit())
-	_server.text = "Server: " + Session.server_url.trim_prefix("http://")
+	_add_server_field()
 	_set_mode(false)
 
 	if Session.token != "":
@@ -48,6 +48,27 @@ func _ready() -> void:
 			return
 		_show("", false)
 	_username.grab_focus()
+
+
+## The server address: "Server:" and an editable box (play on a friend's server: type their address).
+func _add_server_field() -> void:
+	_server.text = "Server:"
+	var row := HBoxContainer.new()
+	_server.get_parent().add_child(row)
+	_server.get_parent().move_child(row, _server.get_index())
+	_server.reparent(row)
+	var box := LineEdit.new()
+	box.name = "ServerAddress"
+	box.text = Session.server_url.trim_prefix("http://")
+	box.placeholder_text = "localhost:2567"
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.tooltip_text = "The game server to play on (ask whoever hosts it). Port 2567 if you leave it out."
+	var apply := func(_t: Variant = null) -> void:
+		Session.set_server(box.text)
+		box.text = Session.server_url.trim_prefix("http://")
+	box.text_submitted.connect(apply)
+	box.focus_exited.connect(apply)
+	row.add_child(box)
 
 
 ## Switches between the Log in and Register forms.

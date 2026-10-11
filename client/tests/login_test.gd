@@ -19,6 +19,15 @@ func _ready() -> void:
 	add_child(_screen)
 	await get_tree().process_frame
 
+	print("server address")
+	var original := Session.server_url
+	Session.set_server("192.168.1.20")
+	_check("port 2567 added", Session.server_url == "http://192.168.1.20:2567", Session.server_url)
+	Session.set_server("https://play.example.com:443/")
+	_check("full URLs kept", Session.server_url == "https://play.example.com:443", Session.server_url)
+	Session.set_server(original.trim_prefix("http://"))
+	_check("back to the test server", Session.server_url == original, Session.server_url)
+
 	print("validation (no server needed)")
 	await _try("ab", password)
 	_check("short username rejected", _screen.status_text().begins_with("Username"))

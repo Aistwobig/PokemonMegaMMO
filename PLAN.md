@@ -150,6 +150,8 @@ Phase 2 can start in parallel with Phase 0, since the server doesn't depend on a
 
 ## Hosting
 
+Running a server for friends and building the player package: see `docs/hosting.md`.
+
 - **Now (free):** Postgres + Redis in Docker locally (`docker compose up -d`).
 - **Friends testing (free):** Neon/Supabase + Upstash free tiers, or Tailscale to the dev PC.
 - **Small launch (~$5–20/month):** one VPS (e.g. Hetzner) with daily backups.
