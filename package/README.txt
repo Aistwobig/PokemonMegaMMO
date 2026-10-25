@@ -12,8 +12,9 @@ WHAT YOU NEED
 
 FIRST TIME
   1. Run Import.bat and give it your RomFS folder (paste the path, or drag the folder onto
-     Import.bat). The conversion takes under a minute; preparing the assets for the game
-     takes 10-20 minutes the first time (only once).
+     Import.bat). The conversion takes a few minutes (the soundtrack is most of it);
+     preparing the assets for the game takes 10-20 minutes the first time (only once).
+     Already played an older version? Run Import.bat again to get the music and Pokemon icons.
   2. Run Play.bat.
   3. On the login screen, type the server address in the "Server" box (for example
      100.64.12.34 or play.example.com; the port 2567 is added if you leave it out).
@@ -22,9 +23,10 @@ FIRST TIME
 CONTROLS
   Arrow keys / WASD   walk
   Space / Enter / Z   talk, next message
-  P                   your Pokemon (click two to swap them)
+  P                   your Pokemon (click one to see it, click it again and then another to swap)
+  B                   your bag
   C                   change your look
-  Esc                 log out
+  Esc                 menu: music volume, the soundtrack, log out
 
 TROUBLE?
   "Can't reach the server"  - check the address with the host, and that they're online.

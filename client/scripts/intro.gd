@@ -20,6 +20,7 @@ var _gesture := 0
 
 
 func _ready() -> void:
+	Music.play(Music.INTRO)
 	_build_stage()
 	_box = DialogueBox.new()
 	_box.speaker = "Professor Sycamore"

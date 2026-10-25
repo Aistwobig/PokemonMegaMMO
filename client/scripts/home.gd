@@ -56,6 +56,7 @@ var _leaving := false
 
 
 func _ready() -> void:
+	Music.play_map("vaniville") # the house is in Vaniville's zone and plays its theme
 	var env := WorldEnvironment.new()
 	env.environment = Environment.new()
 	env.environment.background_mode = Environment.BG_COLOR

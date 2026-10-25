@@ -30,6 +30,7 @@ var _busy := false
 
 
 func _ready() -> void:
+	Music.play(Music.TITLE)
 	_add_background()
 	_login_tab.pressed.connect(_set_mode.bind(false))
 	_register_tab.pressed.connect(_set_mode.bind(true))

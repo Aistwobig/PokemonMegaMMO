@@ -4,6 +4,7 @@ extends Node3D
 
 const TOWN_SCENE := "res://scenes/phase0.tscn" # sky, sun, HUD and material fixes
 const LOGIN_SCENE := "res://scenes/login.tscn"
+const CREATOR_SCENE := "res://scenes/character_creator.tscn"
 ## The overworld (Vaniville, Route 1, Aquacorde, Route 2): every chunk of map01, from
 ## importer/README.md. Without it, the two Vaniville chunks from Phase 0 are used.
 const OVERWORLD := "res://asset-cache/maps/map01/"
@@ -34,6 +35,8 @@ var _npcs := {} # trainer id -> NpcModel standing on the current map
 var _grass: Array[Node3D] = [] # tall grass tufts (hidden during battles, which happen "elsewhere" in X/Y)
 var _pending_npcs: Variant = null
 var _has_pokemon := true # until the server says otherwise; false shows the starter choice in Aquacorde
+var _hud: GameHud
+var _map_id := "" # the map we're on, once the room state says
 ## Tests turn this off so stray key presses (the window takes focus while you type) can't move.
 var accept_input := true
 
@@ -51,11 +54,11 @@ func _ready() -> void:
 	_camera.far = 20000.0
 	add_child(_camera)
 	_camera.make_current()
-	_status = Label.new()
-	_status.position = Vector2(16, 40)
-	_status.add_theme_constant_override("outline_size", 6)
-	_status.add_theme_color_override("font_outline_color", Color.BLACK)
-	town.get_node("HUD").add_child(_status)
+	town.get_node("HUD").free() # the title screen's HUD; the world has its own
+	_hud = GameHud.new()
+	add_child(_hud)
+	_hud.requested.connect(_on_hud_request)
+	_status = _hud.status
 	_box = DialogueBox.new()
 	add_child(_box)
 	var party := await Session.get_party()
@@ -98,19 +101,47 @@ func _on_message(type: Variant, data: Variant) -> void:
 			_mom_heals()
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_P and not _busy and accept_input:
-		get_viewport().set_input_as_handled()
-		open_party()
+## A HUD button or key (P, B, C, Esc). Nothing opens over a battle, a talk or another menu.
+func _on_hud_request(what: String) -> void:
+	if _busy or not accept_input:
+		return
+	match what:
+		"party":
+			open_party()
+		"bag":
+			_open_menu(BagMenu.new())
+		"look":
+			get_tree().change_scene_to_file(CREATOR_SCENE)
+		"settings":
+			var menu := SettingsMenu.new()
+			menu.logout_requested.connect(_log_out)
+			_open_menu(menu)
 
 
 ## The party screen; walking waits until it's closed.
 func open_party() -> PartyMenu:
-	_busy = true
 	var menu := PartyMenu.new()
-	add_child(menu)
-	menu.closed.connect(func() -> void: _busy = false)
+	_open_menu(menu)
 	return menu
+
+
+func _open_menu(menu: CanvasLayer) -> void:
+	_busy = true
+	add_child(menu)
+	menu.closed.connect(func() -> void:
+		_busy = false
+		_hud.refresh())
+
+
+func _log_out() -> void:
+	set_process(false)
+	await Session.logout()
+	get_tree().change_scene_to_file(LOGIN_SCENE)
+
+
+## The map we're on (for the music menu's "back to the area's music").
+func current_map() -> String:
+	return _map_id
 
 
 ## Moves to the next map. Neighbouring overworld maps share one 3D world, so our trainer stays
@@ -177,6 +208,8 @@ func _start_battle(update: Dictionary) -> void:
 	if me == null:
 		return
 	_busy = true
+	_hud.visible = false # battles and story scenes have the screen to themselves
+	Music.play(Music.TRAINER_BATTLE if update.has("trainer") else Music.WILD_BATTLE, 0.25)
 	if update.has("trainer"):
 		await _trainer_walks_up(update.trainer)
 	# Trainers step out of the picture during a battle, as in X/Y (the camera stands where we were).
@@ -199,6 +232,9 @@ func _start_battle(update: Dictionary) -> void:
 	for g in _grass:
 		g.visible = true
 	_camera.make_current()
+	Music.play_map(_map_id)
+	_hud.visible = true
+	_hud.refresh()
 	var fade := ScreenFade.new(Color.BLACK)
 	add_child(fade)
 	# Blacked out somewhere else: the server warps us home and the arrival clears the busy flag.
@@ -215,6 +251,8 @@ func _mom_heals() -> void:
 	var name: String = Session.trainer.get("name", "")
 	_box.speaker = "Mom"
 	await _box.say(GameText.pages(GameText.HOME, 29, name, Session.gender()))
+	_hud.refresh()
+	Music.jingle(Music.HEAL)
 	await _box.say(GameText.pages(GameText.HOME, 30, name, Session.gender()))
 	_busy = false
 
@@ -230,8 +268,10 @@ func _maybe_meet_neighbors() -> void:
 		return
 	_busy = true
 	var scene := NeighborsScene.new(self, me)
+	_hud.visible = false
 	add_child(scene)
 	await scene.finished
+	_hud.visible = true
 	_busy = false
 
 
@@ -245,9 +285,12 @@ func _maybe_choose_starter() -> void:
 	_busy = true
 	_has_pokemon = true
 	var choice := StarterChoice.new(me)
+	_hud.visible = false
 	add_child(choice)
 	await choice.finished
 	_camera.make_current()
+	_hud.visible = true
+	_hud.refresh()
 	_busy = false
 
 
@@ -264,6 +307,12 @@ func _sync_players() -> void:
 		return
 	if int(state.get("originX", -1)) >= 0:
 		_origin = Vector2i(int(state.originX), int(state.originY))
+	var map_id := str(state.get("mapId", ""))
+	if map_id != "" and map_id != _map_id:
+		_map_id = map_id
+		_hud.set_place(map_id)
+		if _battle == null:
+			Music.play_map(map_id)
 	if _pending_npcs != null:
 		_show_npcs(_pending_npcs)
 		_pending_npcs = null

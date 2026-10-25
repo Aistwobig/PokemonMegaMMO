@@ -3,8 +3,10 @@
 Turns the player's own Pokémon X RomFS into the client's asset cache (`client/asset-cache/`,
 gitignored). Nothing produced here may be committed or shared.
 
-**One command does it all:** `BchTool import <romfs> <client/asset-cache>` (about 20 seconds; the
-code is `BchTool/Importer.cs`). Players get it in the package as `Import.bat`. The steps below are
+**One command does it all:** `BchTool import <romfs> <client/asset-cache>` (about 20 seconds, plus
+about 3 minutes the first time for the soundtrack; the code is `BchTool/Importer.cs` and
+`BchTool/Media.cs`). Players get it in the package as `Import.bat`. `--only <step>` runs just the
+steps whose name contains that text (`--only icons`, `--only soundtrack`). The steps below are
 what it does, and how to redo one by hand with the Python tools while working on the importer.
 
 ## Tools
@@ -60,6 +62,24 @@ py -3 tools/pokemon.py R C/pokemon <BchTool.exe> 650:chespin 651:quilladin 653:f
 ```
 
 Battle motions: 0 idle, 1 appear, 8 physical attack, 12 special attack, 16 hit, 17 faint.
+
+**Pokémon icons** (`a/0/9/3`, 945 entries → `C/icons/<id>.png`, 40×30). Each entry is a BCLIM
+whose data is X/Y's own palette format: u16 2, u16 color count, the colors (RGBA5551), then one
+index per pixel (4 bits; 8 bits when there are more than 16 colors) in 8×8 Morton tiles over a
+64×32 texture. The order is the game's internal Pokémon number (`pmNNNN`, the prefix of a model's
+texture names; it equals the National Dex for Gen 1–5 but not for Kalos: Fennekin is pm0717,
+Chespin pm0720), with every form side by side (Megas before the base form, Vivillon's 20 patterns,
+Furfrou's trims, Pyroar ♂/♀). Entry 944 is the Egg. Not every form gets an icon (Pumpkaboo's
+sizes share one, Venusaur ♀ has none) and a few species have a second copy (Clefairy, Greninja),
+so the indices in `Importer.PokemonList` were checked by eye; check a new one the same way
+(decode a range of entries into a contact sheet and look).
+
+**Soundtrack** (`romfs/sound/*.aac` → `C/music/<name>.mp3`). The music is plain ADTS AAC (48 kHz
+stereo, `bgm_xy_*` = music, `me_xy_*` = jingles). Godot can't play AAC, so Media Foundation
+(built into Windows) decodes it and encodes 192 kb/s MP3. Which theme a map plays: the zone table
+(`a/0/1/2` entry 360) has a music number at 0x08 (Vaniville 5, Route 1 11, Aquacorde 6, Route 2
+12), an index into a table of `xy_sound.bcsar` sound IDs in `code.bin` at 0x44eacc: 5 = `T_01`,
+6 = `T_02`, 11 = `R_A`, 12 = `R_B`. The client's `scripts/music.gd` has the map → track list.
 
 **Tall grass** (`a/2/3/0`, a "TM" pack: grass00 = normal tall grass, 01–03 with flowers, 04 long
 grass; each model has swaying animations). The client plants grass00 on every `0x20002004` tile:

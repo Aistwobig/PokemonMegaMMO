@@ -12,13 +12,6 @@ const MOT_PHYSICAL := 8
 const MOT_SPECIAL := 12
 const MOT_HIT := 16
 const MOT_FAINT := 17
-const TYPE_COLORS := {
-	"Normal": Color("a8a77a"), "Fire": Color("ee8130"), "Water": Color("6390f0"), "Electric": Color("f7d02c"),
-	"Grass": Color("7ac74c"), "Ice": Color("96d9d6"), "Fighting": Color("c22e28"), "Poison": Color("a33ea1"),
-	"Ground": Color("e2bf65"), "Flying": Color("a98ff3"), "Psychic": Color("f95587"), "Bug": Color("a6b91a"),
-	"Rock": Color("b6a136"), "Ghost": Color("735797"), "Dragon": Color("6f35fc"), "Dark": Color("705746"),
-	"Steel": Color("b7b7ce"), "Fairy": Color("d685ad"),
-}
 const BALL_NAMES := {"pokeball": "Poké Ball", "greatball": "Great Ball", "ultraball": "Ultra Ball"}
 
 var _send: Callable # func(action: Dictionary)
@@ -37,7 +30,8 @@ var _ball: MeshInstance3D
 
 # UI
 var _ui: CanvasLayer
-var _boxes := {} # side -> {name: Label, level: Label, bar: ColorRect, back: ColorRect, hp: Label}
+var _boxes := {} # side -> {panel, icon: PokemonIcon, name: Label, gender: Label, level: Label, status: Container, bar: StatBar, hp: Label}
+var _result := "" # how the update being played ends ("win", "caught", ...), for the victory music
 var _message: Label
 var _message_panel: PanelContainer
 var _menu: Control
@@ -81,6 +75,7 @@ func _play() -> void:
 	_menu.visible = false
 	while not _queue.is_empty():
 		var u: Dictionary = _queue.pop_front()
+		_result = str(u.get("result", ""))
 		_refresh_boxes(u.get("view", {}), u.get("events", []).is_empty())
 		for e: Dictionary in u.get("events", []):
 			await _play_event(e)
@@ -108,6 +103,8 @@ func _play_event(e: Dictionary) -> void:
 			_flash(side)
 		"faint":
 			_motion(side, MOT_FAINT)
+			if side == "wild" and _result == "win":
+				_victory_music()
 			var mon: Node3D = _mons.get(side)
 			if mon:
 				var t := create_tween()
@@ -121,6 +118,9 @@ func _play_event(e: Dictionary) -> void:
 			_release_from_ball()
 		"caught":
 			_caught()
+			_victory_music()
+		"levelup":
+			Music.jingle(Music.LEVEL_UP)
 		"evolve":
 			if _mons.player:
 				_spawn("player", str(e.species))
@@ -131,6 +131,11 @@ func _play_event(e: Dictionary) -> void:
 		await _say(str(e.text))
 	elif str(e.get("anim", "")) in ["hit", "attack"]:
 		await _wait(0.35)
+
+
+func _victory_music() -> void:
+	var vs_trainer: bool = _update.get("view", {}).get("trainer") is Dictionary
+	Music.play(Music.TRAINER_WIN if vs_trainer else Music.WILD_WIN, 0.2)
 
 
 ## A number from the server's JSON (which may also be null or text).
@@ -281,26 +286,23 @@ func _build_ui() -> void:
 	_ui = CanvasLayer.new()
 	_ui.layer = 5
 	add_child(_ui)
-	_boxes.wild = _info_box(Vector2(24, 24), false)
-	_boxes.player = _info_box(Vector2(-404, -330), true)
+	_boxes.wild = _info_box(false)
+	_boxes.player = _info_box(true)
 	_message_panel = PanelContainer.new()
 	_message_panel.anchor_top = 1.0
 	_message_panel.anchor_bottom = 1.0
 	_message_panel.anchor_right = 1.0
 	_message_panel.offset_top = -150
-	_message_panel.offset_left = 24
-	_message_panel.offset_right = -24
-	_message_panel.offset_bottom = -24
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.1, 0.16, 0.92)
-	style.border_color = Color(0.85, 0.85, 0.9)
-	style.set_border_width_all(3)
-	style.set_corner_radius_all(14)
+	_message_panel.offset_left = 16
+	_message_panel.offset_right = -16
+	_message_panel.offset_bottom = -16
+	var style := Ui.panel_style(Color(0.07, 0.09, 0.13, 0.93), 8)
+	style.border_color = Color(1, 1, 1, 0.22)
+	style.set_border_width_all(2)
 	style.set_content_margin_all(18)
 	_message_panel.add_theme_stylebox_override("panel", style)
 	_ui.add_child(_message_panel)
-	_message = Label.new()
-	_message.add_theme_font_size_override("font_size", 24)
+	_message = Ui.label("", 22)
 	_message.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_message.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_message.custom_minimum_size.x = 560
@@ -310,58 +312,68 @@ func _build_ui() -> void:
 	_menu.anchor_right = 1.0
 	_menu.anchor_top = 1.0
 	_menu.anchor_bottom = 1.0
-	_menu.offset_left = -520
-	_menu.offset_top = -146
-	_menu.offset_right = -30
-	_menu.offset_bottom = -28
+	_menu.offset_left = -540
+	_menu.offset_top = -142
+	_menu.offset_right = -28
+	_menu.offset_bottom = -26
 	_ui.add_child(_menu)
 
 
-func _info_box(pos: Vector2, is_player: bool) -> Dictionary:
+## The wild/foe box sits top left, ours bottom right above the message box (X/Y's layout).
+func _info_box(is_player: bool) -> Dictionary:
 	var panel := PanelContainer.new()
 	if is_player:
 		panel.anchor_left = 1.0
 		panel.anchor_right = 1.0
 		panel.anchor_top = 1.0
 		panel.anchor_bottom = 1.0
-	panel.offset_left = pos.x
-	panel.offset_top = pos.y
-	panel.custom_minimum_size = Vector2(380, 0)
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.97, 0.97, 0.95, 0.95)
-	style.set_corner_radius_all(12)
-	style.set_content_margin_all(12)
-	style.shadow_color = Color(0, 0, 0, 0.3)
-	style.shadow_size = 6
-	panel.add_theme_stylebox_override("panel", style)
+		panel.offset_left = -420
+		panel.offset_top = -268
+		panel.offset_right = -16
+		panel.offset_bottom = -164
+		panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	else:
+		panel.offset_left = 16
+		panel.offset_top = 16
+	panel.custom_minimum_size = Vector2(404, 0)
+	panel.add_theme_stylebox_override("panel", Ui.panel_style(Color(0.08, 0.1, 0.14, 0.9), 8))
 	_ui.add_child(panel)
-	var col := VBoxContainer.new()
-	panel.add_child(col)
 	var row := HBoxContainer.new()
-	col.add_child(row)
-	var name_label := Label.new()
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_label.add_theme_font_size_override("font_size", 22)
-	name_label.add_theme_color_override("font_color", Color(0.15, 0.15, 0.18))
-	row.add_child(name_label)
-	var level := Label.new()
-	level.add_theme_font_size_override("font_size", 20)
-	level.add_theme_color_override("font_color", Color(0.15, 0.15, 0.18))
-	row.add_child(level)
-	var back := ColorRect.new()
-	back.color = Color(0.25, 0.25, 0.28)
-	back.custom_minimum_size = Vector2(0, 12)
-	col.add_child(back)
-	var bar := ColorRect.new()
-	bar.color = Color(0.3, 0.85, 0.4)
-	bar.size = Vector2(0, 12)
-	back.add_child(bar)
-	var hp := Label.new()
+	row.add_theme_constant_override("separation", 8)
+	panel.add_child(row)
+	var icon := PokemonIcon.new("", 2.0)
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(icon)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 3)
+	row.add_child(col)
+	var top := HBoxContainer.new()
+	col.add_child(top)
+	var name_label := Ui.label("", 19)
+	top.add_child(name_label)
+	var gender := Ui.label("", 18)
+	top.add_child(gender)
+	var status := HBoxContainer.new()
+	status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status.alignment = BoxContainer.ALIGNMENT_END
+	top.add_child(status)
+	var level := Ui.label("", 16, Ui.TEXT_DIM)
+	top.add_child(level)
+	var hp_row := HBoxContainer.new()
+	hp_row.add_theme_constant_override("separation", 6)
+	col.add_child(hp_row)
+	hp_row.add_child(Ui.badge("HP", Color(0.85, 0.55, 0.15), 11))
+	var bar := StatBar.new(10)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hp_row.add_child(bar)
+	var hp := Ui.label("", 14)
 	hp.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	hp.add_theme_color_override("font_color", Color(0.2, 0.2, 0.25))
 	hp.visible = is_player
 	col.add_child(hp)
-	return {"panel": panel, "name": name_label, "level": level, "bar": bar, "back": back, "hp": hp, "max": 1, "cur": 0}
+	return {"panel": panel, "icon": icon, "name": name_label, "gender": gender, "level": level, "status": status,
+		"bar": bar, "hp": hp, "max": 1, "cur": 0}
 
 
 func _refresh_boxes(view: Dictionary, set_hp: bool) -> void:
@@ -370,12 +382,25 @@ func _refresh_boxes(view: Dictionary, set_hp: bool) -> void:
 		if not (v is Dictionary):
 			continue
 		var box: Dictionary = _boxes[side]
-		var gender: String = {"M": " ♂", "F": " ♀"}.get(v.get("gender", ""), "")
-		box.name.text = str(v.name) + gender
+		box.name.text = str(v.name)
+		box.gender.text = " " + Ui.gender_symbol(v.get("gender", ""))
+		box.gender.add_theme_color_override("font_color", Ui.gender_color(v.get("gender", "")))
 		box.level.text = "Lv. %d" % int(v.level)
+		box.icon.species = str(v.get("species", ""))
+		box.icon.hop = side == "player"
 		box.max = maxi(int(v.maxHp), 1)
+		_set_status(side, v.get("status"), int(v.hp))
 		if set_hp or box.cur == 0:
 			_set_hp(side, int(v.hp), int(v.maxHp), true)
+
+
+func _set_status(side: String, status: Variant, hp: int) -> void:
+	var box: Dictionary = _boxes[side]
+	for c in (box.status as Container).get_children():
+		c.queue_free()
+	var badge := Ui.status_badge(status, hp)
+	if badge:
+		box.status.add_child(badge)
 
 
 func _set_hp(side: String, hp: int, max_hp: int, instant := false) -> void:
@@ -383,17 +408,11 @@ func _set_hp(side: String, hp: int, max_hp: int, instant := false) -> void:
 	if max_hp > 0:
 		box.max = max_hp
 	box.cur = hp
-	var width: float = box.back.size.x if box.back.size.x > 0 else 356.0
-	var ratio := clampf(float(hp) / float(box.max), 0.0, 1.0)
-	var color := Color(0.3, 0.85, 0.4) if ratio > 0.5 else Color(0.95, 0.8, 0.2) if ratio > 0.2 else Color(0.9, 0.25, 0.2)
 	box.hp.text = "%d / %d" % [hp, box.max]
-	if instant:
-		box.bar.size = Vector2(width * ratio, 12)
-		box.bar.color = color
-		return
-	var t := create_tween().set_parallel()
-	t.tween_property(box.bar, "size:x", width * ratio, 0.5)
-	t.tween_property(box.bar, "color", color, 0.5)
+	(box.bar as StatBar).set_value(hp, box.max, not instant)
+	box.icon.fainted = hp <= 0
+	if hp <= 0:
+		_set_status(side, "fnt", 0)
 
 
 func _say(text: String) -> void:
@@ -439,50 +458,42 @@ func _clear_menu() -> GridContainer:
 	var grid := GridContainer.new()
 	grid.columns = 2
 	grid.set_anchors_preset(Control.PRESET_FULL_RECT)
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 8)
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
 	_menu.add_child(grid)
 	_menu.visible = true
 	return grid
 
 
 func _button(grid: Container, text: String, color: Color, action: Callable, enabled := true) -> Button:
-	var b := Button.new()
-	b.text = text
+	var b := Ui.button(text, action, color, 18)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	b.add_theme_font_size_override("font_size", 20)
 	b.disabled = not enabled
-	for state in ["normal", "hover", "pressed", "disabled"]:
-		var s := StyleBoxFlat.new()
-		s.bg_color = color.darkened(0.15) if state == "pressed" else color.lightened(0.1) if state == "hover" else color if state == "normal" else color.darkened(0.5)
-		s.set_corner_radius_all(10)
-		s.border_color = Color(1, 1, 1, 0.6)
-		s.set_border_width_all(2)
-		b.add_theme_stylebox_override(state, s)
-	b.add_theme_color_override("font_color", Color.WHITE)
-	b.pressed.connect(action)
+	b.add_theme_constant_override("outline_size", 4)
+	b.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.45))
 	grid.add_child(b)
 	return b
 
 
 func _show_commands() -> void:
 	var grid := _clear_menu()
-	_button(grid, "FIGHT", Color(0.85, 0.25, 0.25), _show_moves)
-	_button(grid, "BAG", Color(0.9, 0.65, 0.15), _show_bag)
-	_button(grid, "POKéMON", Color(0.25, 0.7, 0.35), _show_party.bind(false))
+	_button(grid, "FIGHT", Color(0.78, 0.24, 0.22), _show_moves)
+	_button(grid, "BAG", Color(0.82, 0.58, 0.14), _show_bag)
+	_button(grid, "POKéMON", Color(0.22, 0.62, 0.32), _show_party.bind(false))
 	var vs_trainer: bool = _update.get("view", {}).get("trainer") is Dictionary
-	_button(grid, "RUN", Color(0.25, 0.45, 0.85), _choose.bind({"type": "run"}), not vs_trainer)
+	_button(grid, "RUN", Color(0.24, 0.42, 0.78), _choose.bind({"type": "run"}), not vs_trainer)
 
 
 func _show_moves() -> void:
 	var grid := _clear_menu()
 	grid.columns = 3
 	for m: Dictionary in _update.request.moves:
-		var label := "%s\n%d/%d" % [m.name, int(m.pp), int(m.maxPp)]
-		_button(grid, label, TYPE_COLORS.get(m.type, Color(0.4, 0.4, 0.45)), _choose.bind({"type": "move", "index": int(m.index)}),
-			not m.disabled and int(m.pp) > 0)
-	_button(grid, "Back", Color(0.35, 0.35, 0.4), _show_commands)
+		var color: Color = Ui.TYPE_COLORS.get(m.type, Color(0.4, 0.4, 0.45))
+		var b := _button(grid, "%s\n%s   PP %d/%d" % [m.name, str(m.type).to_upper(), int(m.pp), int(m.maxPp)],
+			color.darkened(0.15), _choose.bind({"type": "move", "index": int(m.index)}), not m.disabled and int(m.pp) > 0)
+		b.add_theme_font_size_override("font_size", 15)
+	_button(grid, "Back", Color(0.26, 0.29, 0.36), _show_commands)
 
 
 func _show_bag() -> void:
@@ -495,22 +506,29 @@ func _show_bag() -> void:
 		var n := int(balls.get(id, 0))
 		if n > 0:
 			any = true
-			_button(grid, "%s  ×%d" % [BALL_NAMES[id], n], Color(0.85, 0.3, 0.3), _choose.bind({"type": "ball", "item": id}))
+			_button(grid, "%s  ×%d" % [BALL_NAMES[id], n], Color(0.72, 0.25, 0.25), _choose.bind({"type": "ball", "item": id}))
 	if not any:
 		_message.text = "You don't have any Poké Balls."
-	_button(grid, "Back", Color(0.35, 0.35, 0.4), _show_commands)
+	_button(grid, "Back", Color(0.26, 0.29, 0.36), _show_commands)
 
 
 func _show_party(forced: bool) -> void:
 	var grid := _clear_menu()
+	grid.columns = 3
 	var active: Variant = _update.get("view", {}).get("player")
 	for p: Dictionary in _update.get("view", {}).get("party", []):
 		var is_active: bool = active is Dictionary and int(active.slot) == int(p.slot) and int(active.hp) > 0
-		var label := "%s  Lv. %d\n%d / %d HP" % [p.name, int(p.level), int(p.hp), int(p.maxHp)]
-		_button(grid, label, Color(0.25, 0.6, 0.35) if int(p.hp) > 0 else Color(0.4, 0.3, 0.3),
+		var b := _button(grid, "%s\nLv. %d   %d/%d" % [p.name, int(p.level), int(p.hp), int(p.maxHp)],
+			Color(0.2, 0.42, 0.3) if int(p.hp) > 0 else Color(0.35, 0.22, 0.22),
 			_choose.bind({"type": "switch", "slot": int(p.slot)}), int(p.hp) > 0 and not is_active)
+		b.add_theme_font_size_override("font_size", 14)
+		b.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		var icon := PokemonIcon.new(str(p.get("species", "")), 1.0)
+		icon.fainted = int(p.hp) <= 0
+		icon.position = Vector2(4, 4)
+		b.add_child(icon)
 	if not forced:
-		_button(grid, "Back", Color(0.35, 0.35, 0.4), _show_commands)
+		_button(grid, "Back", Color(0.26, 0.29, 0.36), _show_commands)
 
 
 func _choose(action: Dictionary) -> void:

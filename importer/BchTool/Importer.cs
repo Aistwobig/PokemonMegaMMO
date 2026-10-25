@@ -2,7 +2,7 @@
 //
 // Builds the client's whole asset cache from a decrypted Pokémon X RomFS in one go: the overworld
 // (Vaniville to Route 2), the player's house, the player's clothing parts, story characters,
-// trainers, Pokémon, tall grass and the game text. It does what the Python tools in importer/tools
+// trainers, Pokémon and their menu icons, tall grass, the game text and the soundtrack. It does what the Python tools in importer/tools
 // do (GARC archives, LZ11, GF packs, text, tile grids), so players only need this one program.
 // Every step is listed in Steps(); importer/README.md explains where the data comes from.
 
@@ -22,9 +22,10 @@ static class Importer
     {
         Console.OutputEncoding = Encoding.UTF8;
         string workArg = TakeOption(args, "--work");
+        string only = TakeOption(args, "--only"); // run just the steps whose name contains this
         if (args.Count < 2)
         {
-            Console.Error.WriteLine("usage: BchTool import <romfs folder> <client asset-cache folder> [--work <temp folder>]");
+            Console.Error.WriteLine("usage: BchTool import <romfs folder> <client asset-cache folder> [--work <temp folder>] [--only <step>]");
             return 2;
         }
         romfs = args[0];
@@ -39,6 +40,7 @@ static class Importer
         Directory.CreateDirectory(cache);
         Directory.CreateDirectory(work);
         var steps = Steps();
+        if (only != null) steps = steps.Where(s => s.Key.IndexOf(only, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
         for (int i = 0; i < steps.Count; i++)
         {
             Console.WriteLine($"[{i + 1}/{steps.Count}] {steps[i].Key}");
@@ -61,6 +63,8 @@ static class Importer
         add("Story characters and trainers", Characters);
         add("Tall grass", Grass);
         add("Pokémon", Pokemon);
+        add("Pokémon icons", PokemonIcons);
+        add("Soundtrack (first time: a few minutes)", Soundtrack);
         return s;
     }
 
@@ -175,17 +179,54 @@ static class Importer
         Program.Export(Path.Combine(cache, "npc", "grass00"), "grass00", new List<string> { files[7], files[8] });
     }
 
-    static readonly (int dex, string id)[] PokemonList = {
-        (650, "chespin"), (651, "quilladin"), (652, "chesnaught"), (653, "fennekin"), (654, "braixen"),
-        (655, "delphox"), (656, "froakie"), (657, "frogadier"), (658, "greninja"), (661, "fletchling"),
-        (662, "fletchinder"), (663, "talonflame"), (659, "bunnelby"), (660, "diggersby"), (664, "scatterbug"),
-        (665, "spewpa"), (666, "vivillon"), (263, "zigzagoon"), (264, "linoone"), (25, "pikachu"), (26, "raichu"),
-        (16, "pidgey"), (17, "pidgeotto"), (10, "caterpie"), (11, "metapod"), (13, "weedle"), (14, "kakuna"),
+    /// National Dex number, our id, and the menu icon's entry in a/0/9/3 (see Media.cs).
+    static readonly (int dex, string id, int icon)[] PokemonList = {
+        (650, "chespin", 881), (651, "quilladin", 882), (652, "chesnaught", 883), (653, "fennekin", 878),
+        (654, "braixen", 879), (655, "delphox", 880), (656, "froakie", 884), (657, "frogadier", 885),
+        (658, "greninja", 886), (661, "fletchling", 917), (662, "fletchinder", 918), (663, "talonflame", 919),
+        (659, "bunnelby", 859), (660, "diggersby", 860), (664, "scatterbug", 835), (665, "spewpa", 836),
+        (666, "vivillon", 837), (263, "zigzagoon", 342), (264, "linoone", 343), (25, "pikachu", 29),
+        (26, "raichu", 30), (16, "pidgey", 20), (17, "pidgeotto", 21), (10, "caterpie", 14),
+        (11, "metapod", 15), (13, "weedle", 17), (14, "kakuna", 18),
     };
+    const int EggIcon = 944;
 
     static void Pokemon()
     {
-        foreach (var (dex, id) in PokemonList) ExportPokemon(dex, id, Path.Combine(cache, "pokemon"));
+        foreach (var (dex, id, _) in PokemonList) ExportPokemon(dex, id, Path.Combine(cache, "pokemon"));
+    }
+
+    /// Menu icons: icons/<id>.png (40×30, transparent), plus icons/egg.png.
+    static void PokemonIcons()
+    {
+        var g = Garcs("a/0/9/3");
+        string dir = Path.Combine(cache, "icons");
+        Directory.CreateDirectory(dir);
+        foreach (var (_, id, icon) in PokemonList.Concat(new[] { (0, "egg", EggIcon) }))
+            using (var bmp = Icons.Decode(g.Get(icon)))
+                bmp.Save(Path.Combine(dir, id + ".png"), System.Drawing.Imaging.ImageFormat.Png);
+    }
+
+    /// The soundtrack: every romfs/sound/*.aac as music/<name>.mp3 (bgm_xy_* = music, me_xy_* = jingles).
+    /// Already converted files are skipped, so re-running the importer is quick.
+    static void Soundtrack()
+    {
+        string dir = Path.Combine(cache, "music");
+        Directory.CreateDirectory(dir);
+        var files = Directory.GetFiles(Path.Combine(romfs, "sound"), "*.aac").OrderBy(f => f).ToArray();
+        Music.Start();
+        try
+        {
+            for (int i = 0; i < files.Length; i++)
+            {
+                string mp3 = Path.Combine(dir, Path.GetFileNameWithoutExtension(files[i]) + ".mp3");
+                if (File.Exists(mp3) && new FileInfo(mp3).Length > 0) continue;
+                Console.Write($"\r  {i + 1}/{files.Length} {Path.GetFileName(files[i])}".PadRight(60));
+                Music.ToMp3(files[i], mp3);
+            }
+            Console.WriteLine();
+        }
+        finally { Music.Stop(); }
     }
 
     /// a/0/0/7: entry 0 indexes models (u16 model per species); each form has 8 entries from

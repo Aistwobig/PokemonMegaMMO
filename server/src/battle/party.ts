@@ -34,7 +34,15 @@ export async function partySummary(trainerId: string) {
     party: party.map((m) => ({
       slot: m.slot, species: m.species, name: m.nickname ?? speciesName(m.species), level: m.level, gender: m.gender,
       shiny: m.shiny, hp: hp(m), maxHp: maxHp(m), status: m.status, moves: m.moves.map((id) => dex.moves.get(id).name),
+      // PP isn't saved between battles yet: show the full PP every battle starts with (Showdown
+      // gives each move 3 PP Ups, so base PP × 8/5).
+      moveInfo: m.moves.map((id) => {
+        const mv = dex.moves.get(id);
+        return { name: mv.name, type: mv.type, category: mv.category, power: mv.basePower, accuracy: mv.accuracy, pp: Math.floor(mv.pp * 8 / 5) };
+      }),
+      types: dex.species.get(m.species).types,
       nature: dex.natures.get(m.nature).name, ability: dex.abilities.get(m.ability).name, exp: m.exp,
+      levelExp: expForLevel(extra(m.species).growth, m.level),
       nextLevelExp: m.level < 100 ? expForLevel(extra(m.species).growth, m.level + 1) : m.exp,
       stats: { atk: stat(m, "atk"), def: stat(m, "def"), spa: stat(m, "spa"), spd: stat(m, "spd"), spe: stat(m, "spe") },
     })),
