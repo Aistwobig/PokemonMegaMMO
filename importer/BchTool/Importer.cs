@@ -60,7 +60,11 @@ static class Importer
         add("Title screen town and Garchomp", Phase0);
         add("Player clothing (girl)", () => PlayerParts("f1", 8, Range(9, 63).Except(new[] { 52, 53 }).Concat(new[] { 7 }), Range(65, 396), 1));
         add("Player clothing (boy)", () => PlayerParts("f2", 398, Range(399, 432).Except(new[] { 425, 426 }).Concat(new[] { 397 }), Range(433, 630), 2));
+        add("Player full-size (girl)", () => FullSizePlayer("b1", 8, Range(7, 69).Except(new[] { 8 }), Range(71, 455), 3));
+        add("Player full-size (boy)", () => FullSizePlayer("b2", 457, Range(456, 493).Except(new[] { 457 }), Range(495, 740), 8));
         add("Story characters and trainers", Characters);
+        add("Cutscene characters (full-size)", CutsceneCharacters);
+        add("Opening cutscenes", OpeningCutscenes);
         add("Tall grass", Grass);
         add("Pokémon", Pokemon);
         add("Pokémon icons", PokemonIcons);
@@ -137,9 +141,18 @@ static class Importer
 
     /// Clothing parts from a/0/8/8 on one skeleton, with the overworld motions (a/0/2/1 pack 1/2).
     static void PlayerParts(string gender, int baseEntry, IEnumerable<int> parts, IEnumerable<int> textures, int motionPack)
+        => PlayerParts("a/0/8/8", gender, baseEntry, parts, textures, Pack(Garcs("a/0/2/1").Get(motionPack), "mm" + motionPack)[1]);
+
+    /// The player's full-size ("anime") look for cutscenes and battles: a/0/8/9 holds the same clothing
+    /// as the overworld (b1 = girl, b2 = boy, named like f1/f2), with the full-size player's motions
+    /// from a/1/4/0 (bt0001 / bt0002, motion pack 2 = story motions) → trainers/b1, trainers/b2.
+    static void FullSizePlayer(string gender, int baseEntry, IEnumerable<int> parts, IEnumerable<int> textures, int a140Entry)
+        => PlayerParts("a/0/8/9", gender, baseEntry, parts, textures, Pack(Garcs("a/1/4/0").Get(a140Entry), gender + "_motions")[0]);
+
+    static void PlayerParts(string garc, string gender, int baseEntry, IEnumerable<int> parts, IEnumerable<int> textures, string motionFile)
     {
-        var g = Garcs("a/0/8/8");
-        string dir = Path.Combine(work, "a088");
+        var g = Garcs(garc);
+        string dir = Path.Combine(work, garc.Replace("/", ""));
         Directory.CreateDirectory(dir);
         Func<int, string> file = i =>
         {
@@ -154,7 +167,7 @@ static class Importer
         args.Add("--textures");
         args.AddRange(textures.Where(isBch).Select(file));
         args.Add("--motions");
-        args.Add(Pack(Garcs("a/0/2/1").Get(motionPack), "mm" + motionPack)[1]);
+        args.Add(motionFile);
         Program.Parts(Path.Combine(cache, "trainers", gender), args);
     }
 
@@ -173,6 +186,78 @@ static class Importer
         }
     }
 
+    /// Full-size ("anime") models used in cutscenes and battles, a/1/4/0: five entries per character,
+    /// a BCH model then a "BB" pack and three "BS" packs whose file 0 is a GF motion pack. The packs'
+    /// motions are numbered pack × 100 + slot (pack 1 = battle: 100 entrance; pack 2 = story: for
+    /// Sycamore 247–255 are the intro's "ba90_opening" gestures; pack 3 = more story motions).
+    /// Exported as npc/btNNNN (btNNNN is the full-size twin of the overworld trNNNN, where both exist).
+    static void CutsceneCharacters()
+    {
+        var g = Garcs("a/1/4/0");
+        for (int m = 0; m + 4 < g.Count; m += 5)
+        {
+            byte[] model = g.Get(m);
+            var found = System.Text.RegularExpressions.Regex.Match(Encoding.ASCII.GetString(model), @"bt\d{4}");
+            if (!found.Success) continue;
+            string id = found.Value;
+            string bch = Path.Combine(work, id + ".bch");
+            File.WriteAllBytes(bch, model);
+            string outDir = Path.Combine(cache, "npc", id);
+            if (Directory.Exists(outDir)) Directory.Delete(outDir, true);
+            Program.Export(outDir, id, new List<string> { bch });
+            for (int p = 1; p <= 3; p++)
+            {
+                byte[] pack = g.Get(m + 1 + p);
+                if (pack.Length < 1024) continue; // an empty pack
+                var files = Pack(pack, $"{id}_pack{p}");
+                string tmp = Path.Combine(work, $"{id}_pack{p}_out");
+                if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
+                try { Program.Export(tmp, id, new List<string> { bch, "--motions", files[0] }); }
+                catch (Exception e) { Console.WriteLine($"  {id} pack {p}: {e.Message}"); continue; }
+                foreach (string f in Directory.GetFiles(tmp, id + "_mot*.dae"))
+                {
+                    int slot = int.Parse(Path.GetFileNameWithoutExtension(f).Substring(id.Length + 4));
+                    File.Copy(f, Path.Combine(outDir, $"{id}_mot{p * 100 + slot}.dae"), true);
+                }
+            }
+        }
+    }
+
+    /// The game's own opening scenes.
+    /// - The professor's intro, a/1/1/5 (CGFX): 1 = "hakasecam" (the intro camera), 2 = the hall and
+    ///   its floor grid (BG_top), 3 = the painting wall, 9 = the Poké Ball → cutscenes/intro.
+    /// - Waking up, a/1/6/5: 507/508 bedroom (girl/boy), 509–512 blanket + animation, 514/515 feathers,
+    ///   517/518/527 Fletchling, 520–522 shadow, 513 the camera ("bird_cam"), 524/526 the player's
+    ///   wake-up motion (girl/boy, on the trainer skeletons a/0/8/8 8 and 398) → cutscenes/wakeup.
+    static void OpeningCutscenes()
+    {
+        var intro = Garcs("a/1/1/5");
+        string Raw(Garc g, int i, string name) { string p = Path.Combine(work, name); File.WriteAllBytes(p, g.Get(i)); return p; }
+        string introDir = Path.Combine(cache, "cutscenes", "intro");
+        Directory.CreateDirectory(introDir);
+        CutsceneCamera.Write(Raw(intro, 1, "intro_cam.cgfx"), Path.Combine(introDir, "hakasecam.camera.json"));
+        foreach (var (i, name) in new[] { (2, "BG_top"), (3, "intro_wall"), (9, "monsball") })
+            Program.Export(introDir, name, new List<string> { Raw(intro, i, name + ".cgfx") });
+
+        var a165 = Garcs("a/1/6/5");
+        string wake = Path.Combine(cache, "cutscenes", "wakeup");
+        Directory.CreateDirectory(wake);
+        CutsceneCamera.Write(Raw(a165, 513, "bird_cam.cgfx"), Path.Combine(wake, "bird_cam.camera.json"));
+        foreach (var (name, entries) in new[] {
+            ("opening_bg_f", new[] { 507 }), ("opening_bg_m", new[] { 508 }),
+            ("opening_blanket_f", new[] { 509, 510 }), ("opening_blanket_m", new[] { 511, 512 }),
+            ("opening_feather", new[] { 514, 515 }), ("fletchling", new[] { 527, 517, 518 }),
+            ("opening_shadow", new[] { 520, 521, 522 }) })
+            Program.Export(Path.Combine(wake, name), name, entries.Select(e => Raw(a165, e, $"w{e}.bch")).ToList());
+        var parts = Garcs("a/0/8/8");
+        foreach (var (g, body, anim) in new[] { ("f", 8, 524), ("m", 398, 526) })
+        {
+            string tmp = Path.Combine(work, "wake_tr_" + g);
+            Program.Export(tmp, "opening_tr_" + g, new List<string> { Raw(parts, body, $"tr_{g}_body.bch"), Raw(a165, anim, $"w{anim}.bch") });
+            File.Copy(Path.Combine(tmp, $"opening_tr_{g}_mot00.dae"), Path.Combine(wake, $"opening_tr_{g}_mot00.dae"), true);
+        }
+    }
+
     static void Grass()
     {
         var files = Pack(Garcs("a/2/3/0").Get(0), "grass");
@@ -188,6 +273,7 @@ static class Importer
         (666, "vivillon", 837), (263, "zigzagoon", 342), (264, "linoone", 343), (25, "pikachu", 29),
         (26, "raichu", 30), (16, "pidgey", 20), (17, "pidgeotto", 21), (10, "caterpie", 14),
         (11, "metapod", 15), (13, "weedle", 17), (14, "kakuna", 18),
+        (672, "skiddo", 889), (673, "gogoat", 890), // Sycamore's Skiddo in the intro
     };
     const int EggIcon = 944;
 
@@ -243,6 +329,8 @@ static class Importer
             return p;
         }
         Program.Export(Path.Combine(outRoot, id), id, new List<string> { Save(0, "model"), Save(2, "tex"), "--motions", Save(5, "anim") });
+        // Face expressions and mesh visibility per battle motion (eyes, mouth): see PicaMotions.
+        PicaMotions.Write(SPICA.Formats.CtrH3D.H3D.Open(PackFiles(g.Get(b))[0]), PackFiles(g.Get(b + 5)), Path.Combine(outRoot, id), id);
     }
 
     // --- helpers ----------------------------------------------------------------------------------

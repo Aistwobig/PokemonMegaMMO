@@ -42,6 +42,7 @@ func _run() -> void:
 	for n: Node3D in [neighbor, shauna, rhyhorn]:
 		if n:
 			add_child(n)
+	_box.talkers["Shauna"] = LipSync.attach(shauna)
 	if rhyhorn:
 		_place(rhyhorn, Vector2i(30, 42), "left")
 		rhyhorn.scale = Vector3.ONE * 1.2
@@ -84,6 +85,7 @@ func _run() -> void:
 	var mom: Node3D = NpcModel.create(MOM)
 	if mom:
 		add_child(mom)
+		_box.talkers["Mom"] = LipSync.attach(mom)
 		_place(mom, Vector2i(27, 36), "down")
 		mom.position.z += 6.0 # just outside the door
 		_motion(mom, 0)

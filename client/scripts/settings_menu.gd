@@ -1,8 +1,10 @@
 class_name SettingsMenu extends CanvasLayer
-## The game menu (Esc): music volume, the soundtrack player, and logging out.
+## The game menu (Esc): music volume, the soundtrack player, logging out, and — on a server with
+## DEV_TOOLS=on — developer tools: start your trainer over from the beginning.
 
 signal closed
 signal logout_requested
+signal new_game_requested(keep_look: bool)
 
 var _now: Label
 var _jukebox: ItemList
@@ -52,6 +54,9 @@ func _ready() -> void:
 		_jukebox.add_item(t.trim_prefix("bgm_xy_").trim_prefix("me_xy_") + ("  (jingle)" if t.begins_with("me_") else ""))
 	if _tracks.is_empty():
 		_jukebox.add_item("No music yet: run Import.bat again to add the soundtrack.")
+	if Session.dev_tools():
+		_add_developer(c)
+
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	c.add_child(row)
@@ -61,6 +66,31 @@ func _ready() -> void:
 	row.add_child(spacer)
 	row.add_child(Ui.button("Log out", logout_requested.emit, Color(0.55, 0.2, 0.2)))
 	_update_now()
+
+
+## Developer: new game. Asks once more before wiping progress.
+func _add_developer(c: VBoxContainer) -> void:
+	c.add_child(Ui.label("Developer", 14, Ui.TEXT_DIM))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	c.add_child(row)
+	var keep := CheckBox.new()
+	keep.text = "Keep my look"
+	keep.button_pressed = true
+	keep.focus_mode = Control.FOCUS_NONE
+	keep.add_theme_font_size_override("font_size", 13)
+	var start := Ui.button("New game", Callable(), Color(0.25, 0.32, 0.5))
+	start.pressed.connect(func() -> void:
+		if start.text == "New game":
+			start.text = "Sure? Click again"
+			start.add_theme_color_override("font_color", Ui.GOLD)
+			return
+		new_game_requested.emit(keep.button_pressed))
+	row.add_child(start)
+	row.add_child(keep)
+	var hint := Ui.label("Starts your trainer over: intro, no Pokémon, items or progress.", 12, Ui.TEXT_DIM)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD
+	c.add_child(hint)
 
 
 func _play_track(i: int) -> void:

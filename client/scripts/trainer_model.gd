@@ -56,6 +56,7 @@ static func from_look(new_look: Dictionary, load_motions := true) -> TrainerMode
 	t.add_child(base)
 	var skel := base.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
 	var skin := _skin_from_pose(skel)
+	_attach_accessory_bones(skel)
 	var manifest := get_manifest(gender)
 	var tints := {
 		"hair": HAIR_COLORS[clampi(int(new_look.get("hairColor", 0)), 0, HAIR_COLORS.size() - 1)],
@@ -71,6 +72,40 @@ static func from_look(new_look: Dictionary, load_motions := true) -> TrainerMode
 		t.motions = _motion_lists[gender]
 	Outline.apply(t)
 	return t
+
+
+## The same look on the full-size ("anime") model used in cutscenes (trainers/b1, trainers/b2): the
+## game names the full-size clothing like the overworld one (f2_hat_cap → b2_hat_cap) with the same
+## colors. Bottoms come in a version for boots and one for shoes; girls' legs are socks for boots or
+## shoes. Returns {} when the full-size parts aren't imported.
+static func full_look(look: Dictionary) -> Dictionary:
+	var g: String = look.get("gender", "f2")
+	var b := "b" + g.substr(1)
+	var manifest := get_manifest(b)
+	if manifest.is_empty():
+		return {}
+	var parts: Dictionary = look.get("parts", {})
+	var shoes: String = parts.get("shoes", {}).get("part", "")
+	var kind := "lboots" if shoes.contains("boots") else "shoes"
+	var out := {}
+	for cat: String in parts:
+		var p: Dictionary = parts[cat]
+		var name: String = b + str(p.get("part", "")).substr(2)
+		if cat == "btms" and manifest.has(name + "_" + kind):
+			name += "_" + kind
+		elif cat == "socks":
+			name = "%s_socks_%s" % [b, kind]
+		if not manifest.has(name):
+			continue
+		var q := p.duplicate()
+		q.part = name
+		out[cat] = q
+	if b == "b1" and not out.has("socks") and manifest.has("b1_socks_" + kind):
+		out.socks = {"part": "b1_socks_" + kind, "color": "none"}
+	var full := look.duplicate(true)
+	full.gender = b
+	full.parts = out
+	return full
 
 
 static func default_look(gender: String) -> Dictionary:
@@ -132,6 +167,7 @@ static func _attach_part(skel: Skeleton3D, skin: Skin, folder: String, choice: D
 	var scene := (load(path) as PackedScene).instantiate()
 	var color: String = choice.get("color", "")
 	var entry: Dictionary = manifest.get(choice.part, {})
+	var pica := PicaMaterial.load_info(folder, "parts") # the game's toon materials, when imported
 	for c in scene.find_children("*", "MeshInstance3D", true, false):
 		var mi := c as MeshInstance3D
 		mi.owner = null # it belonged to the part's scene, which is freed below
@@ -144,10 +180,34 @@ static func _attach_part(skel: Skeleton3D, skin: Skin, folder: String, choice: D
 			if mat == null:
 				continue
 			mat = mat.duplicate() as StandardMaterial3D # each trainer gets its own colors
+			var original := mat.albedo_texture.resource_path.get_file().get_basename() if mat.albedo_texture else ""
 			_recolor(mat, entry, color, folder)
 			_fix_transparency(mat)
-			mi.set_surface_override_material(s, _tint(mat, folder, tints))
+			var mat_name := mat.resource_name.trim_suffix("_mat")
+			var pm := _pica(pica, mat_name, mat, original, folder, tints)
+			mi.set_surface_override_material(s, pm if pm else _tint(mat, folder, tints))
 	scene.free()
+
+
+## The game's own material for a part (toon shading from its lookup tables, see PicaMaterial), with
+## the chosen color variant and the hair/skin tint. null when it can't be used: no material data, or
+## clothing showing skin (the "_m" mask tint needs its own shader).
+static func _pica(pica: Dictionary, mat_name: String, mat: StandardMaterial3D, original: String, folder: String, tints: Dictionary) -> Material:
+	if not pica.has(mat_name) or mat.albedo_texture == null:
+		return null
+	var tex_name := mat.albedo_texture.resource_path.get_file().get_basename()
+	var tint := Color.WHITE
+	if tex_name.contains("_hair"):
+		tint = tints.hair
+	elif tex_name.contains("_face"):
+		tint = tints.skin
+	elif tints.skin != Color(1, 1, 1) and ResourceLoader.exists(folder.path_join(tex_name + "_m.png")):
+		return null
+	var pm := PicaMaterial.build(pica[mat_name], folder, {original: mat.albedo_texture})
+	pm.set_shader_parameter("tint", tint)
+	if pica[mat_name].get("alphaTest", {}).get("Enabled", false):
+		pm.set_meta("cutout", true) # hair strands, lace: no outline hull
+	return pm
 
 
 ## Hair textures are grey and take the hair color; faces take the skin tone; clothing with a "_m"
@@ -219,6 +279,25 @@ static func _skin_from_pose(skel: Skeleton3D) -> Skin:
 	for i in skel.get_bone_count():
 		skel.set_bone_rest(i, skel.get_bone_pose(i))
 	return skin
+
+
+## Hat accessories (the "point" parts: glasses, badge, wing) are weighted to the "acchat" bone,
+## which the export leaves on the skeleton's root; the game pins it to the head at runtime, and no
+## motion animates it. Left alone, the glasses stay put while the head bobs and they slide over the
+## cap. Make it a child of Head, keeping its starting pose, so it moves with the head. The skin's
+## binds are global, so they stay valid.
+static func _attach_accessory_bones(skel: Skeleton3D) -> void:
+	var head := skel.find_bone("Head")
+	if head < 0:
+		return
+	var head_rest := skel.get_bone_global_rest(head)
+	for i in skel.get_bone_count():
+		if not skel.get_bone_name(i).begins_with("acc") or skel.get_bone_parent(i) == head:
+			continue
+		var local := head_rest.affine_inverse() * skel.get_bone_global_rest(i)
+		skel.set_bone_parent(i, head)
+		skel.set_bone_rest(i, local)
+		skel.set_bone_pose(i, local)
 
 
 static func _motion_library(gender: String) -> AnimationLibrary:

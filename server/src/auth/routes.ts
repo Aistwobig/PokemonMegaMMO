@@ -1,6 +1,8 @@
 import { randomInt } from "node:crypto";
 import express, { type Request, type Response } from "express";
+import { config } from "../config.ts";
 import { pool, transaction } from "../db/pool.ts";
+import { isOnline } from "../world/online.ts";
 import { LookError, validateLook } from "../world/appearance.ts";
 import { giveStarter, partySummary, STARTERS, swapParty } from "../battle/party.ts";
 import type { GameMap } from "../world/maps.ts";
@@ -19,6 +21,7 @@ import { createSession, deleteSession, findSession, type SessionTrainer } from "
 //   GET  /trainer/party                 (Bearer)               → 200 { party, items }
 //   POST /trainer/starter  { species }  (Bearer)               → 201 { party, items }  (once)
 //   POST /trainer/party/swap { a, b }   (Bearer)               → 200 { party, items }  (reorder)
+//   POST /trainer/dev/new-game { keepLook } (Bearer, DEV_TOOLS=on) → 200 { trainer }   (start over)
 
 const START_MAP = "vaniville";
 // Cutscenes the client plays by itself and only tells the server about. Nothing that gives items or
@@ -168,6 +171,30 @@ export function authRoutes(app: express.Application, maps: Map<string, GameMap>)
     );
     res.json({ trainer: publicTrainer({ ...session, ...door, flags: { ...session.flags, intro: true } }) });
   }));
+
+  // Developer tool: the trainer starts the game over, as if just registered: no Pokémon, items,
+  // money, badges or story progress, back at the start. Same account and name; the look is kept if
+  // asked (keepLook), otherwise the intro's character creation comes up again. The trainer must be
+  // off the map first, or leaving it would save their old position over the new start.
+  app.post("/trainer/dev/new-game", handle(async (req, res) => {
+    if (!config.devTools) throw new HttpError(404, "Not found.");
+    const session = await findSession(bearer(req));
+    if (!session) throw new HttpError(401, "Not logged in.");
+    if (isOnline(session.trainerId)) throw new HttpError(409, "Leave the map first.");
+    const keepLook = req.body?.keepLook === true;
+    await transaction(async (db) => {
+      await db.query("DELETE FROM pokemon WHERE owner_id = $1", [session.trainerId]);
+      for (const table of ["inventory", "badges", "story_flags"]) {
+        await db.query(`DELETE FROM ${table} WHERE trainer_id = $1`, [session.trainerId]);
+      }
+      await db.query(
+        `UPDATE trainers SET flags = '{}', money = 0, map_id = $2, x = $3, y = $4, facing = 'down',
+           appearance = CASE WHEN $5 THEN appearance ELSE NULL END WHERE id = $1`,
+        [session.trainerId, startMap.id, startMap.spawn.x, startMap.spawn.y, keepLook],
+      );
+    });
+    res.json({ trainer: publicTrainer((await findSession(bearer(req)))!) });
+  }));
 }
 
 /** What the client gets to see about its own trainer. */
@@ -176,6 +203,7 @@ function publicTrainer(t: SessionTrainer) {
     name: t.name, mapId: t.mapId, x: t.x, y: t.y, facing: t.facing, appearance: t.appearance,
     introDone: t.flags.intro === true,
     story: Object.keys(t.flags).filter((k) => t.flags[k] === true), // events seen, e.g. ["intro", "neighbors"]
+    devTools: config.devTools, // the client shows its Developer menu
   };
 }
 

@@ -10,6 +10,9 @@ signal _picked(index: int)
 const CHARS_PER_SEC := 60.0
 
 var speaker := "" # shown above the box when set
+## Speaker name → their LipSync: that character's mouth moves while their text types out.
+##   box.talkers["Mom"] = LipSync.attach(mom_model)
+var talkers := {}
 var _panel: PanelContainer
 var _name: Label
 var _text: Label
@@ -116,12 +119,19 @@ func _show(text: String, wait: bool) -> void:
 	_text.visible_characters = 0
 	_typing = true
 	_arrow.visible = false
+	var lips: LipSync = talkers.get(speaker)
+	if lips and not is_instance_valid(lips):
+		lips = null
+	if lips:
+		lips.talking = true
 	while _typing:
 		await get_tree().process_frame
 		_visible_chars += get_process_delta_time() * CHARS_PER_SEC
 		_text.visible_characters = int(_visible_chars)
 		if _visible_chars >= text.length():
 			_typing = false
+	if lips and is_instance_valid(lips):
+		lips.talking = false
 	_text.visible_characters = -1
 	if wait:
 		_arrow.visible = true

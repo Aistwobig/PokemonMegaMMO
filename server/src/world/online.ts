@@ -14,6 +14,10 @@ export function claimOnline(trainerId: string, client: Client): void {
   if (previous && previous !== client) previous.leave(CLOSE_LOGGED_IN_ELSEWHERE);
 }
 
+export function isOnline(trainerId: string): boolean {
+  return online.has(trainerId);
+}
+
 export function releaseOnline(trainerId: string, client: Client): void {
   if (online.get(trainerId) === client) online.delete(trainerId);
 }

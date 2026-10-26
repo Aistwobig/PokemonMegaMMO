@@ -173,6 +173,7 @@ func _spawn(side: String, species: String) -> void:
 	mon.global_position = at
 	mon.look_at(at + (_forward if side == "player" else -_forward), Vector3.UP, true)
 	var size := _scale_for(mon, species)
+	BlobShadow.attach(mon, 14.0).scale = Vector3.ONE / size # sized in world units, not the model's
 	mon.scale = Vector3.ONE * 0.01
 	create_tween().tween_property(mon, "scale", Vector3.ONE * size, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	if not mon.play_motion(MOT_APPEAR, false):

@@ -5,6 +5,7 @@ extends Node3D
 const TOWN_SCENE := "res://scenes/phase0.tscn" # sky, sun, HUD and material fixes
 const LOGIN_SCENE := "res://scenes/login.tscn"
 const CREATOR_SCENE := "res://scenes/character_creator.tscn"
+const INTRO_SCENE := "res://scenes/intro.tscn"
 ## The overworld (Vaniville, Route 1, Aquacorde, Route 2): every chunk of map01, from
 ## importer/README.md. Without it, the two Vaniville chunks from Phase 0 are used.
 const OVERWORLD := "res://asset-cache/maps/map01/"
@@ -115,6 +116,9 @@ func _on_hud_request(what: String) -> void:
 		"settings":
 			var menu := SettingsMenu.new()
 			menu.logout_requested.connect(_log_out)
+			menu.new_game_requested.connect(func(keep_look: bool) -> void:
+				menu.queue_free()
+				_new_game(keep_look))
 			_open_menu(menu)
 
 
@@ -137,6 +141,28 @@ func _log_out() -> void:
 	set_process(false)
 	await Session.logout()
 	get_tree().change_scene_to_file(LOGIN_SCENE)
+
+
+## Developer: start this trainer over. Leaves the map first (leaving saves the position, which
+## would undo the reset), then the server wipes the progress and the intro plays again.
+func _new_game(keep_look: bool) -> void:
+	_busy = true
+	accept_input = false
+	_status.text = "Starting a new game…"
+	if _room:
+		var room := _room
+		_room = null
+		room.leave()
+	var err := ""
+	for attempt in 20: # the server answers 409 until it has finished saving our exit
+		err = await Session.new_game(keep_look)
+		if err != "Leave the map first.":
+			break
+		await get_tree().create_timer(0.25).timeout
+	if err != "":
+		_status.text = err
+		return
+	get_tree().change_scene_to_file(INTRO_SCENE)
 
 
 ## The map we're on (for the music menu's "back to the area's music").
@@ -171,6 +197,7 @@ func _show_npcs(list: Variant) -> void:
 		if npc == null:
 			continue
 		add_child(npc)
+		BlobShadow.attach(npc)
 		npc.position = _tile_to_world(int(t.x), int(t.y))
 		npc.rotation_degrees.y = FACING_YAW.get(t.get("facing", "down"), 0.0)
 		npc.play_motion(0)
@@ -490,6 +517,7 @@ class RemoteTrainer extends Node3D:
 		if _model:
 			add_child(_model)
 			_model.play_motion(TrainerModel.MOTION_STAND)
+			BlobShadow.attach(self)
 		var tag := Label3D.new()
 		tag.text = trainer_name
 		tag.position.y = 52

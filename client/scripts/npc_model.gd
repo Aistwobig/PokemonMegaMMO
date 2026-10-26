@@ -22,10 +22,11 @@ static func create(npc_id: String, folder_format := FOLDER) -> NpcModel:
 	var model := (load(path) as PackedScene).instantiate()
 	n.add_child(model)
 	var material_info := _material_info(folder.path_join(npc_id + ".materials.json"))
+	var pica := PicaMaterial.load_info(folder, npc_id) # the game's own materials, when imported
 	var skels := model.find_children("*", "Skeleton3D", true, false)
 	if not skels.is_empty():
 		var skel := skels[0] as Skeleton3D
-		var skin := TrainerModel._skin_from_pose(skel)
+		var skin := _skin_from_dae(path, skel)
 		for c in model.find_children("*", "MeshInstance3D", true, false):
 			var mi := c as MeshInstance3D
 			mi.skeleton = mi.get_path_to(skel)
@@ -33,7 +34,15 @@ static func create(npc_id: String, folder_format := FOLDER) -> NpcModel:
 			for s in mi.mesh.get_surface_count():
 				var mat := mi.get_active_material(s) as StandardMaterial3D
 				var mat_name := mat.resource_name.trim_suffix("_mat") if mat else "" # SPICA names them "<name>_mat"
-				if mat and material_info.has(mat_name) and mat.albedo_texture:
+				if mat and pica.has(mat_name):
+					var own := {}
+					if mat.albedo_texture:
+						own[mat.albedo_texture.resource_path.get_file().get_basename()] = mat.albedo_texture
+					var pm := PicaMaterial.build(pica[mat_name], folder, own)
+					if pica[mat_name].get("alphaTest", {}).get("Enabled", false):
+						pm.set_meta("cutout", true) # see-through edges: no outline hull
+					mi.set_surface_override_material(s, pm)
+				elif mat and material_info.has(mat_name) and mat.albedo_texture:
 					mi.set_surface_override_material(s, _transformed(mat, material_info[mat_name]))
 				elif mat:
 					mat = mat.duplicate() as StandardMaterial3D
@@ -48,6 +57,37 @@ static func create(npc_id: String, folder_format := FOLDER) -> NpcModel:
 
 
 const UV_SHADER := preload("res://shaders/pokemon.gdshader")
+static var _dae_skins := {} # path -> Skin
+
+
+## Godot's DAE import keeps the bone weights but drops the skin. Building it from the bones' starting
+## pose (TrainerModel._skin_from_pose) only works when the model was made in that pose; Pokémon aren't
+## (their heads tear apart once animated), so read the real inverse bind matrices from the DAE's
+## first skin controller. Falls back to the starting pose when the file has none.
+static func _skin_from_dae(path: String, skel: Skeleton3D) -> Skin:
+	if _dae_skins.has(path):
+		var cached: Skin = _dae_skins[path]
+		for i in skel.get_bone_count(): # the motions play against the starting pose, as before
+			skel.set_bone_rest(i, skel.get_bone_pose(i))
+		return cached
+	var text := FileAccess.get_file_as_string(path)
+	var names_at := text.find("_ctrl_names_array_id")
+	var poses_at := text.find("_ctrl_poses_array_id")
+	if names_at < 0 or poses_at < 0:
+		return TrainerModel._skin_from_pose(skel)
+	var names := text.substr(text.find(">", names_at) + 1, text.find("<", names_at) - text.find(">", names_at) - 1).split(" ", false)
+	var nums := text.substr(text.find(">", poses_at) + 1, text.find("<", poses_at) - text.find(">", poses_at) - 1).split_floats(" ", false)
+	if nums.size() < names.size() * 16:
+		return TrainerModel._skin_from_pose(skel)
+	var skin := Skin.new()
+	for i in names.size():
+		var m := nums.slice(i * 16, i * 16 + 16) # row-major 4×4
+		var basis := Basis(Vector3(m[0], m[4], m[8]), Vector3(m[1], m[5], m[9]), Vector3(m[2], m[6], m[10]))
+		skin.add_named_bind(names[i], Transform3D(basis, Vector3(m[3], m[7], m[11])))
+	for i in skel.get_bone_count():
+		skel.set_bone_rest(i, skel.get_bone_pose(i))
+	_dae_skins[path] = skin
+	return skin
 
 
 static func _material_info(path: String) -> Dictionary:

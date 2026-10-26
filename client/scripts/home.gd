@@ -100,6 +100,86 @@ func _ready() -> void:
 	wake_up()
 
 
+const FLETCHLING_HEIGHT := 13.0 # world units: 0.3 m next to the ~1.4 m trainer
+const FLETCHLING_FLAP := 0 # battle idle: wings beating in place
+const FLETCHLING_CHIRP := 12 # the "special move" pose: head up, beak open
+
+
+## The Fletchling flies in from the window (north wall, above the bed) to hover beside the pillow.
+func _fletchling_arrives(bed: Vector3) -> NpcModel:
+	var bird := NpcModel.create("fletchling", NpcModel.POKEMON)
+	if bird == null:
+		return null
+	add_child(bird)
+	var box := AABB()
+	var first := true
+	for c in bird.find_children("*", "MeshInstance3D", true, false):
+		var b: AABB = (c as MeshInstance3D).get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+	bird.scale = Vector3.ONE * (FLETCHLING_HEIGHT / maxf(box.size.y, 1.0))
+	var perch := bed + Vector3(30, 28, 6) # in the air beside the bed, in front of the camera
+	var start := perch + Vector3(60, 70, -150) # out of view, by the window
+	bird.position = start
+	bird.look_at(perch, Vector3.UP, true)
+	bird.play_motion(FLETCHLING_FLAP)
+	var t := create_tween()
+	t.tween_method(func(k: float) -> void:
+		# a fluttering line: a little bob on the way in
+		bird.position = start.lerp(perch, k) + Vector3.UP * sin(k * TAU * 2.0) * 4.0, 0.0, 1.0, 1.2).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)
+	t.tween_callback(func() -> void:
+		bird.look_at(bird.position + Vector3(-0.6, 0, 1), Vector3.UP, true) # turn to the player
+		if bird.play_motion(FLETCHLING_CHIRP, false):
+			bird.player.get_animation("mot%02d" % FLETCHLING_FLAP).loop_mode = Animation.LOOP_LINEAR
+			bird.player.queue("mot%02d" % FLETCHLING_FLAP))
+	return bird
+
+
+func _fletchling_leaves(bird: NpcModel) -> void:
+	if bird == null:
+		return
+	var away := bird.position + Vector3(90, 70, -140)
+	bird.look_at(away, Vector3.UP, true)
+	bird.play_motion(FLETCHLING_FLAP)
+	var t := create_tween()
+	t.tween_property(bird, "position", away, 1.0).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_SINE)
+	t.tween_callback(bird.queue_free)
+
+
+const CHIRP_FRAME := 290.0 # the Fletchling flies into the room past the bed: "Cheerp cheerp!"
+
+
+## The game's own wake-up scene (WakeupCutscene: its camera, Fletchling's flight, the blanket and the
+## feathers), then back to the bedroom for the rest.
+func _play_wakeup_cutscene() -> void:
+	var look: Dictionary = Session.trainer.get("appearance") if Session.has_appearance() else TrainerModel.default_look("f2")
+	var scene := WakeupCutscene.new(look)
+	var hidden: Array[Node3D] = [] # the field bedroom would overlap the cutscene's own copy of the room
+	for c in get_children():
+		if c is Node3D and (c as Node3D).visible:
+			(c as Node3D).visible = false
+			hidden.append(c)
+	add_child(scene)
+	scene.play()
+	await _fade.clear(1.0)
+	while scene.camera.playing and scene.camera.frame < CHIRP_FRAME:
+		await get_tree().process_frame
+	scene.camera.speed = 0.0 # hold the moment while the text is up
+	for m in scene.find_children("*", "AnimationPlayer", true, false):
+		(m as AnimationPlayer).speed_scale = 0.0
+	await _say(GameText.HOME, 16, "") # Cheerp cheerp! ♪
+	scene.camera.speed = 1.0
+	for m in scene.find_children("*", "AnimationPlayer", true, false):
+		(m as AnimationPlayer).speed_scale = 1.0
+	await scene.finished
+	await _fade.to(Color.BLACK, 0.5)
+	scene.queue_free()
+	for c in hidden:
+		c.visible = true
+	_camera.make_current()
+	await _fade.clear(0.6)
+
+
 ## The opening cutscene: asleep, a Fletchling's chirp, out of bed, Mom comes up.
 func wake_up() -> void:
 	_load_floor("bedroom")
@@ -108,10 +188,17 @@ func wake_up() -> void:
 	_player.rotation_degrees = Vector3(-90, 0, 0) # lying on the back, head on the pillow
 	_player_motion(TrainerModel.MOTION_STAND)
 	_update_camera(true)
-	await _fade.clear(1.5)
-	await _wait(0.8)
-	await _say(GameText.HOME, 16, "") # Cheerp cheerp! ♪
-	await _wait(0.3)
+	if WakeupCutscene.available():
+		await _play_wakeup_cutscene()
+	else:
+		await _fade.clear(1.5)
+		await _wait(0.4)
+		# A Fletchling flutters in at the window, chirps at the sleeping player, and flies off.
+		var bird := _fletchling_arrives(f.bed)
+		await _wait(1.3)
+		await _say(GameText.HOME, 16, "") # Cheerp cheerp! ♪
+		await _wait(0.3)
+		_fletchling_leaves(bird)
 	# Hop out of bed.
 	_tile = f.wake_tile
 	_facing = "down"
@@ -131,6 +218,7 @@ func wake_up() -> void:
 	var path: Array = f.mom_path
 	if _mom:
 		add_child(_mom)
+		_box.talkers["Mom"] = LipSync.attach(_mom)
 		_mom.position = RoomMap.tile_center(path[0].x, path[0].y)
 		_mom_tile = path[0]
 		await _npc_walk(_mom, path.slice(1))
@@ -243,6 +331,7 @@ func _load_floor(name: String) -> void:
 		_mom = NpcModel.create(MOM)
 		if _mom:
 			add_child(_mom)
+			_box.talkers["Mom"] = LipSync.attach(_mom)
 			_mom_tile = f.mom[0]
 			_mom.position = RoomMap.tile_center(_mom_tile.x, _mom_tile.y)
 			_mom.rotation_degrees.y = FACING_YAW[f.mom[1]]

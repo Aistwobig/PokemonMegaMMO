@@ -1,15 +1,29 @@
 extends Node3D
-## Phase 0: fix materials the DAE import gets wrong.
+## Map materials. Chunks exported with the game's material data (<chunk>.pica.json, importer
+## Pica.cs) get the game's own 3DS materials (PicaMaterial): the baked vertex-color shading, the
+## lighting, blending and alpha tests, so towns look like X/Y instead of flat textures.
+## Older asset caches fall back to fixing what the DAE import gets wrong:
 ## - Textures with an alpha channel get alpha scissor (leaves) or blending (soft edges).
 ## - Blob shadows (kokage*, *_s) only use the texture's alpha, so their color becomes black.
 
 func _ready() -> void:
-	for mesh in find_children("*", "MeshInstance3D", true, false):
-		var mi := mesh as MeshInstance3D
-		for i in mi.mesh.get_surface_count():
-			var mat := mi.get_active_material(i) as StandardMaterial3D
-			if mat:
-				_fix(mat)
+	for chunk in get_children():
+		var path := chunk.scene_file_path
+		var info := PicaMaterial.load_info(path.get_base_dir(), path.get_file().get_basename()) if path != "" else {}
+		for mesh in chunk.find_children("*", "MeshInstance3D", true, false):
+			var mi := mesh as MeshInstance3D
+			for i in mi.mesh.get_surface_count():
+				var mat := mi.get_active_material(i) as StandardMaterial3D
+				if mat == null:
+					continue
+				var mat_name := mat.resource_name.trim_suffix("_mat")
+				if info.has(mat_name):
+					var own := {}
+					if mat.albedo_texture:
+						own[mat.albedo_texture.resource_path.get_file().get_basename()] = mat.albedo_texture
+					mi.set_surface_override_material(i, PicaMaterial.build(info[mat_name], path.get_base_dir(), own))
+				else:
+					_fix(mat)
 
 func _fix(mat: StandardMaterial3D) -> void:
 	var tex := mat.albedo_texture

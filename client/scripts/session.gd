@@ -56,6 +56,22 @@ func save_appearance(look: Dictionary) -> String:
 	return res.data.get("error", "Something went wrong (error %d)." % res.code)
 
 
+## Developer tool (server with DEV_TOOLS=on): starts this trainer over as if just registered.
+## Leave the map room first. Returns "" or an error message.
+func new_game(keep_look: bool) -> String:
+	var res := await _request(HTTPClient.METHOD_POST, "/trainer/dev/new-game", {keepLook = keep_look})
+	if res.code == 200:
+		trainer = res.data.trainer
+		return ""
+	if res.code == 0:
+		return "Can't reach the server at %s. Is it running?" % server_url
+	return res.data.get("error", "Something went wrong (error %d)." % res.code)
+
+
+func dev_tools() -> bool:
+	return trainer.get("devTools", false) == true
+
+
 func has_appearance() -> bool:
 	return trainer.get("appearance") is Dictionary
 

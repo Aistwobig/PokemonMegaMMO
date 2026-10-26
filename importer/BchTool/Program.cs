@@ -40,6 +40,8 @@ static class Program
             if (args.Length >= 4 && args[0] == "export") return Export(args[1], args[2], args.Skip(3).ToList());
             if (args.Length >= 3 && args[0] == "parts") return Parts(args[1], args.Skip(2).ToList());
             if (args.Length >= 1 && args[0] == "import") return Importer.Run(args.Skip(1).ToList());
+            if (args.Length >= 2 && args[0] == "pica") return Pica.Dump(args.Skip(1));
+            if (args.Length == 3 && args[0] == "camera") { CutsceneCamera.Write(args[1], args[2]); return 0; }
             Console.Error.WriteLine("usage: BchTool info <file.bch>... | export <outDir> <name> <file.bch>... | parts <outDir> <base.bch> <part.bch>... | import <romfs> <assetCache>");
             return 2;
         }
@@ -83,8 +85,8 @@ static class Program
             files.RemoveRange(flag, 2);
         }
 
-        H3D scene = H3D.Open(File.ReadAllBytes(files[0]));
-        foreach (string file in files.Skip(1)) scene.Merge(H3D.Open(File.ReadAllBytes(file)));
+        H3D scene = OpenScene(files[0]);
+        foreach (string file in files.Skip(1)) scene.Merge(OpenScene(file));
         if (scene.Models.Count == 0) throw new Exception("no model in " + files[0]);
 
         H3DModel target = scene.Models[0];
@@ -115,6 +117,7 @@ static class Program
         var missing = used.Where(n => !scene.Textures.Contains(n) && !n.StartsWith("projection_dummy")).ToList();
 
         WriteMaterialInfo(target, Path.Combine(outDir, name + ".materials.json"));
+        Pica.Write(scene, target, outDir, name);
         Console.WriteLine($"{name}.dae: {target.Meshes.Count} meshes, {target.Skeleton.Count} bones, {written} textures, {fixedMaterials} material(s) re-pointed off projection_dummy");
         if (missing.Count > 0) Console.WriteLine("  textures not found: " + string.Join(", ", missing));
 
@@ -130,6 +133,15 @@ static class Program
         return 0;
     }
 
+    /// A BCH file, or a CGFX one (older format, used by cutscenes such as the intro).
+    internal static H3D OpenScene(string file)
+    {
+        byte[] d = File.ReadAllBytes(file);
+        if (d.Length > 4 && d[0] == 'C' && d[1] == 'G' && d[2] == 'F' && d[3] == 'X')
+            using (var s = new MemoryStream(d)) return SPICA.Formats.CtrGfx.Gfx.Open(s);
+        return H3D.Open(d);
+    }
+
     internal static int Parts(string outDir, List<string> args)
     {
         string motions = TakeOption(args, "--motions", 1).FirstOrDefault();
@@ -142,6 +154,9 @@ static class Program
         foreach (string file in args.Skip(1))
         {
             H3D partScene = H3D.Open(File.ReadAllBytes(file));
+            foreach (var lut in partScene.LUTs) // the toon shading tables live in the parts
+                if (!scene.LUTs.Contains(lut.Name)) scene.LUTs.Add(lut);
+                else foreach (var smp in lut.Samplers) if (!scene.LUTs[lut.Name].Samplers.Any(x => x.Name == smp.Name)) scene.LUTs[lut.Name].Samplers.Add(smp);
             foreach (H3DModel part in partScene.Models.ToList())
             {
                 int before = body.Meshes.Count;
@@ -191,6 +206,7 @@ static class Program
         }
         var doc = new Dictionary<string, object> { ["skeleton"] = body.Name, ["bones"] = body.Skeleton.Count, ["parts"] = manifest };
         File.WriteAllText(Path.Combine(outDir, "manifest.json"), new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(doc));
+        Pica.Write(scene, body, outDir, "parts"); // the game's materials (toon shading) for every part
         Console.WriteLine($"{partMeshes.Count} parts, {body.Skeleton.Count} bones, {written} textures → {outDir}");
 
         if (motions != null) ExportMotions(scene, outDir, "motion", motions);
@@ -270,6 +286,7 @@ static class Program
             {
                 H3DAnimation anim = mot.ToH3DSkeletalAnimation(model.Skeleton);
                 anim.Name = $"mot{mot.Index:D2}";
+                FillMissingChannels(anim, model);
                 scene.SkeletalAnimations.Add(anim);
             }
         }
@@ -281,6 +298,35 @@ static class Program
             new DAE(scene, 0, i).Save(Path.Combine(outDir, $"{name}_{anim.Name}.dae"));
         }
         Console.WriteLine($"{scene.SkeletalAnimations.Count} motions → {name}_motNN.dae");
+    }
+
+    /// X/Y motions only key the channels that move (often just one rotation axis). The DAE writes
+    /// each existing channel separately (translate, rotateX/Y/Z, scale), and Godot rebuilds a bone
+    /// from the channels it finds, so a missing axis became 0 instead of the bone's own value —
+    /// twisting ears, faces and tails. Give every animated bone all nine channels, the missing ones
+    /// as a constant key at the bone's rest value.
+    ///
+    /// Also: on the 3DS a bone's scale doesn't reach its children (segment scale compensation), but in
+    /// Godot it does, and a non-uniform squash on the head then shears every child bone — faces and ears
+    /// fall apart. Godot has no way to express that, so the scale keys of bones with children are
+    /// dropped (they're small breathing squashes, e.g. Pikachu's head 1.25 × 1 × 1).
+    static void FillMissingChannels(H3DAnimation anim, H3DModel model)
+    {
+        var hasChildren = new HashSet<int>(model.Skeleton.Select(b => (int)b.ParentIndex).Where(p => p >= 0));
+        foreach (H3DAnimationElement el in anim.Elements)
+        {
+            if (!(el.Content is H3DAnimTransform t) || !model.Skeleton.Contains(el.Name)) continue;
+            H3DBone bone = model.Skeleton[el.Name];
+            if (hasChildren.Contains(model.Skeleton.Find(el.Name)))
+                foreach (var g in new[] { t.ScaleX, t.ScaleY, t.ScaleZ }) g.KeyFrames.Clear();
+            void Fill(H3DFloatKeyFrameGroup g, float rest)
+            {
+                if (!g.Exists) g.KeyFrames.Add(new SPICA.Formats.Common.KeyFrame(0, rest));
+            }
+            Fill(t.TranslationX, bone.Translation.X); Fill(t.TranslationY, bone.Translation.Y); Fill(t.TranslationZ, bone.Translation.Z);
+            Fill(t.RotationX, bone.Rotation.X); Fill(t.RotationY, bone.Rotation.Y); Fill(t.RotationZ, bone.Rotation.Z);
+            Fill(t.ScaleX, bone.Scale.X); Fill(t.ScaleY, bone.Scale.Y); Fill(t.ScaleZ, bone.Scale.Z);
+        }
     }
 
     /// Moves the meshes and materials of part into target, remapping bone indices by bone name.

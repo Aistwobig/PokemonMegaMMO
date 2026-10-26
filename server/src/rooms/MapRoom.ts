@@ -85,13 +85,18 @@ export class MapRoom extends Room<{ state: MapState }> {
     const battle = this.battles.get(client.sessionId);
     this.battles.delete(client.sessionId);
     this.trainerBattles.delete(client.sessionId);
-    if (battle) await saveParty(auth.trainer.trainerId, battle.party);
-    releaseOnline(auth.trainer.trainerId, client);
-    if (this.warping.delete(client.sessionId) || !player) return; // the warp already saved the destination
-    await pool.query(
-      "UPDATE trainers SET x = $2, y = $3, facing = $4 WHERE id = $1 AND map_id = $5",
-      [auth.trainer.trainerId, player.x, player.y, player.facing, this.map.id],
-    );
+    try {
+      if (battle) await saveParty(auth.trainer.trainerId, battle.party);
+      if (this.warping.delete(client.sessionId) || !player) return; // the warp already saved the destination
+      await pool.query(
+        "UPDATE trainers SET x = $2, y = $3, facing = $4 WHERE id = $1 AND map_id = $5",
+        [auth.trainer.trainerId, player.x, player.y, player.facing, this.map.id],
+      );
+    } finally {
+      // Only once everything is saved: whatever runs next for this trainer (a new login, a new game)
+      // sees the final state.
+      releaseOnline(auth.trainer.trainerId, client);
+    }
   }
 
   private async handleMove(client: Client, dir: unknown) {
